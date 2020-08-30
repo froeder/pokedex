@@ -1,13 +1,13 @@
 {
-    "name": "thegame",
-    "displayName": "thegame",
+    "name": "pokedex",
+    "displayName": "pokedex",
     "expo": {
-        "name": "thegame",
-        "slug": "thegame",
+        "name": "pokedex",
+        "slug": "pokedex",
         "version": "1.0.1",
         "assetBundlePatterns": ["**/*"],
         "android": {
-            "package": "com.froeder.thegame",
+            "package": "com.froeder.pokedex",
             "versionCode": 1
         }
     }

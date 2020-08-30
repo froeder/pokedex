@@ -1,173 +1,160 @@
-import React, { Component } from "react";
+import React from "react";
 import {
+  ScrollView,
+  Image,
   Text,
   View,
-  FlatList,
-  AsyncStorage,
-  ScrollView,
-  RefreshControl,
+  ActivityIndicator
 } from "react-native";
-import { styles } from "./styles";
-import { List, Button } from "react-native-paper";
-import * as firebase from "firebase";
-import "firebase/firestore";
+import { Searchbar, Card } from "react-native-paper";
+import { TouchableOpacity } from "react-native-gesture-handler";
+import axios from 'axios';
 
-import uuid from "react-native-uuid";
-
-import moment from "moment";
 
 export default class home extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { id: "", refreshing: false };
+    this.state = { search: '', pokemon: {}, loading: false, notFound: false }
+
   }
 
-  async componentDidMount() {
-    this.onRefresh();
-    AsyncStorage.getItem("@user").then((response) => {
-      if (response) {
-        let res = JSON.parse(response);
-
-        this.setState({
-          id: res.id || 1,
-          nome: res.name,
-          cidade: res.location,
-        });
-      }
-    });
+  componentDidMount() {
   }
 
-  setHighScore = (highscore: any): void => {
-    const db = firebase.firestore();
-    db.collection("highscore")
-      .doc(this.state.nome + this.state.id)
-      .set(highscore);
-  };
 
-  onPress = async () => {
-    moment.locale("pt-br");
-    const date = moment().format();
-    this.setHighScore({
-      id: this.state.id,
-      nome: this.state.nome,
-      criado_em: date,
-      cidade: this.state.cidade,
-    });
-    try {
-      this.onRefresh();
-    } catch (err) {
-      console.log("error creating todo:", err);
+  searchPokemon = (search: string) => {
+    if (search.length < 3) return
+    axios.get(`https://pokeapi.co/api/v2/pokemon/${search.toLowerCase()}`).then((response) => {
+      console.log(response)
+      if (!response) this.setState({ notFound: true })
+      this.setState({ pokemon: response.data, loading: false })
+    })
+  }
+
+  renderImageType = (type: string) => {
+    console.log(type)
+    switch (type) {
+      case 'bug':
+        return require(`../assets/bug.png`);
+      case 'dark':
+        return require(`../assets/dark.png`);
+      case 'dragon':
+        return require(`../assets/dragon.png`);
+      case 'electric':
+        return require(`../assets/eletric.png`);
+      case 'fairy':
+        return require(`../assets/fairy.png`);
+      case 'fighting':
+        return require(`../assets/fighting.png`);
+      case 'fire':
+        return require(`../assets/fire.png`);
+      case 'flying':
+        return require(`../assets/flying.png`);
+      case 'ghost':
+        return require(`../assets/ghost.png`);
+      case 'grass':
+        return require(`../assets/grass.png`);
+      case 'ground':
+        return require(`../assets/ground.png`);
+      case 'ice':
+        return require(`../assets/ice.png`);
+      case 'normal':
+        return require(`../assets/normal.png`);
+      case 'poison':
+        return require(`../assets/poison.png`);
+      case 'psychic':
+        return require(`../assets/psychic.png`);
+      case 'rock':
+        return require(`../assets/rock.png`);
+      case 'steel':
+        return require(`../assets/steel.png`);
+      case 'water':
+        return require(`../assets/water.png`);
     }
-  };
 
-  onRefresh = async () => {
-    this.setState({ refreshing: true });
-    const db = firebase.firestore();
-    let snapshot = db.collection("highscore").orderBy("criado_em", "asc").get();
-    let dados = (await snapshot).docs.map((doc) => doc.data());
-    this.setState({ scores: dados, refreshing: false });
-  };
-
-  renderItem = (item) => {
-    moment.locale("pt-br");
-    let dateFrowNow = moment(item.item.criado_em).fromNow();
-    if (item.index <= 2) {
-      return (
-        <List.Item
-          title={item.item.nome}
-          description={() => (
-            <View>
-              <Text>{dateFrowNow}</Text>
-              <Text>{item.item.cidade}</Text>
-            </View>
-          )}
-          left={() => (
-            <List.Icon
-              style={{ borderRadius: 25, backgroundColor: "#FFD700" }}
-              icon="trophy"
-              color="white"
-            />
-          )}
-        />
-      );
-    } else {
-      return (
-        <List.Item
-          title={item.item.nome}
-          description={() => (
-            <View>
-              <Text>{dateFrowNow}</Text>
-              <Text>{item.item.cidade}</Text>
-            </View>
-          )}
-          left={() => (
-            <List.Icon
-              style={{ borderRadius: 25, backgroundColor: "gray" }}
-              icon="help"
-              color="white"
-            />
-          )}
-        />
-      );
-    }
-  };
+  }
 
   render() {
-    moment.locale("pt-BR");
     return (
-      <ScrollView
-        refreshControl={
-          <RefreshControl
-            refreshing={this.state.refreshing}
-            onRefresh={this.onRefresh}
-          />
-        }
-        style={styles.mainContainer}
-      >
-        <View style={{ marginBottom: 20 }}>
-          <Button mode="contained" color="green" onPress={this.onPress}>
-            <Text>Perdi</Text>
-          </Button>
-        </View>
-        <View style={styles.card}>
-          <FlatList
-            data={this.state.scores || []}
-            keyExtractor={(item: Item) => parseInt(item.id)}
-            renderItem={(item) => this.renderItem(item)}
-          />
-        </View>
-      </ScrollView>
+      <>
+        <Searchbar
+          placeholder="Pesquisar"
+          value={this.state.search}
+          onChangeText={(text) => {
+            this.setState({ loading: true })
+            this.setState({ search: text });
+            this.searchPokemon(text)
+          }}
+        />
+        <ScrollView style={{ padding: 20 }}>
+          {!this.state.pokemon.abilities ? (
+            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold' }}>POKEDEX</Text>
+            </View>
+          ) : (
+              <>
+                {!this.state.loading && this.state.pokemon.sprites ? (
+                  <Card >
+                    <Card.Content style={{ flexDirection: 'row', flex: 1, width: '100%' }}>
+                      <Image
+                        style={{
+                          width: 90,
+                          height: 130
+                        }}
+                        source={{
+                          uri: this.state.pokemon.sprites.front_default
+                        }}
+                      />
+                      <View style={{ width: '70%', paddingLeft: 15, flexDirection: 'column', justifyContent: 'space-evenly' }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{this.state.pokemon.name.toUpperCase()}</Text>
+                        <View style={{ paddingTop: 5, flexDirection: 'row' }}>
+                          <Text>Tipo: </Text>
+                          {this.state.pokemon.types.map((item) => {
+                            return (
+                              <Image style={{ width: 20, height: 20 }} source={this.renderImageType(item.type.name)} />
+                            )
+                          })
+                          }
+                        </View>
+                        <View>
+                          <Text>XP: {this.state.pokemon.base_experience}</Text>
+                        </View>
+                      </View>
+                      <View style={{ justifyContent: 'center' }}>
+                        <Text>></Text>
+                      </View>
+
+                    </Card.Content>
+                  </Card>
+                ) : (
+                    <>
+                      {this.state.notFound ? (
+                        <View>
+                          <Text>Não encontrado</Text>
+                        </View>
+                      ) : (
+                          <ActivityIndicator />
+                        )}
+
+                    </>
+                  )}
+              </>
+            )}
+
+
+        </ScrollView>
+      </>
     );
   }
 }
 
-export type Item = {
-  id: string;
-  nome: string;
-  criado_em: string;
-  cidade: string;
-};
 
-export type HighScore = {
-  id: string;
-  nome: string;
-  criado_em: string;
-  cidade: string;
-};
 
 export type Props = {};
 
 export type State = {
-  id?: string;
-  cidade?: string;
-  nome?: string;
-  refreshing: boolean;
-  document?: string;
-  highscore?: {
-    id: string;
-    nome: string;
-    criado_em: string;
-    cidade: string;
-  };
-  scores?: any;
+  search: string;
+  pokemon: any;
+  loading: boolean;
+  notFound: boolean;
 };
