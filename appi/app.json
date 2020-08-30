@@ -1,0 +1,14 @@
+{
+    "name": "thegame",
+    "displayName": "thegame",
+    "expo": {
+        "name": "thegame",
+        "slug": "thegame",
+        "version": "1.0.1",
+        "assetBundlePatterns": ["**/*"],
+        "android": {
+            "package": "com.froeder.thegame",
+            "versionCode": 1
+        }
+    }
+}
