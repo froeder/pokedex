@@ -1,2 +1,0 @@
-# dgame
-O jogo
