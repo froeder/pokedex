@@ -1,0 +1,15 @@
+{
+  "id": "base1",
+  "name": "Coleção Básica",
+  "shortName": "Coleção Básica",
+  "serie": "Coleção Básica",
+  "releaseYear": 1999,
+  "releaseDate": "1999-01-09",
+  "cardCount": 102,
+  "officialCount": 102,
+  "ligaSetCode": "BS",
+  "tcgdexSetId": "base1",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

@@ -1,0 +1,30 @@
+{
+  "id": "tk-hs-r",
+  "name": "HS trainer Kit (Raichu)",
+  "shortName": "HS trainer Kit (Raichu)",
+  "serie": "Trainer kits",
+  "releaseYear": 2010,
+  "releaseDate": "2010-05-01",
+  "cardCount": 30,
+  "officialCount": 30,
+  "ligaSetCode": "TK4R",
+  "tcgdexSetId": "tk-hs-r",
+  "symbolUrl": "https://assets.tcgdex.net/univ/tk/tk-hs-r/symbol",
+  "language": "en",
+  "hasPortugueseData": false,
+  "cards": [
+    {
+      "id": "tk-hs-r-19",
+      "name": "Raichu",
+      "searchName": "Raichu",
+      "collectionId": "tk-hs-r",
+      "collectionName": "HS trainer Kit (Raichu)",
+      "ligaSetCode": "TK4R",
+      "tcgdexSetId": "tk-hs-r",
+      "number": "19",
+      "printedTotal": "30",
+      "types": [],
+      "rarity": ""
+    }
+  ]
+}

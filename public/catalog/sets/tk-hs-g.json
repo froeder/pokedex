@@ -1,0 +1,30 @@
+{
+  "id": "tk-hs-g",
+  "name": "HS trainer Kit (Gyarados)",
+  "shortName": "HS trainer Kit (Gyarados)",
+  "serie": "Trainer kits",
+  "releaseYear": 2010,
+  "releaseDate": "2010-05-01",
+  "cardCount": 30,
+  "officialCount": 30,
+  "ligaSetCode": "TK4G",
+  "tcgdexSetId": "tk-hs-g",
+  "symbolUrl": "https://assets.tcgdex.net/univ/tk/tk-hs-g/symbol",
+  "language": "en",
+  "hasPortugueseData": false,
+  "cards": [
+    {
+      "id": "tk-hs-g-20",
+      "name": "Gyarados",
+      "searchName": "Gyarados",
+      "collectionId": "tk-hs-g",
+      "collectionName": "HS trainer Kit (Gyarados)",
+      "ligaSetCode": "TK4G",
+      "tcgdexSetId": "tk-hs-g",
+      "number": "20",
+      "printedTotal": "30",
+      "types": [],
+      "rarity": ""
+    }
+  ]
+}

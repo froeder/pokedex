@@ -1,0 +1,15 @@
+{
+  "id": "jumbo",
+  "name": "Jumbo cards",
+  "shortName": "Jumbo cards",
+  "serie": "Miscellaneous",
+  "releaseYear": 2000,
+  "releaseDate": "2000-02-01",
+  "cardCount": 160,
+  "officialCount": 160,
+  "ligaSetCode": "JUMBO",
+  "tcgdexSetId": "jumbo",
+  "language": "en",
+  "hasPortugueseData": false,
+  "cards": []
+}

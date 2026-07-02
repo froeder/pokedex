@@ -1,0 +1,16 @@
+{
+  "id": "hgss1",
+  "name": "HeartGold SoulSilver",
+  "shortName": "HeartGold SoulSilver",
+  "serie": "HeartGold SoulSilver",
+  "releaseYear": 2010,
+  "releaseDate": "2010-02-10",
+  "cardCount": 123,
+  "officialCount": 123,
+  "ligaSetCode": "HS",
+  "tcgdexSetId": "hgss1",
+  "symbolUrl": "https://assets.tcgdex.net/univ/hgss/hgss1/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

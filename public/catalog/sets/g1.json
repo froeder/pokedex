@@ -1,0 +1,16 @@
+{
+  "id": "g1",
+  "name": "Gerações",
+  "shortName": "Gerações",
+  "serie": "XY",
+  "releaseYear": 2016,
+  "releaseDate": "2016-02-22",
+  "cardCount": 83,
+  "officialCount": 83,
+  "ligaSetCode": "GEN",
+  "tcgdexSetId": "g1",
+  "symbolUrl": "https://assets.tcgdex.net/univ/xy/g1/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

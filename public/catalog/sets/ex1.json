@@ -1,0 +1,16 @@
+{
+  "id": "ex1",
+  "name": "EX Rubi e Safira",
+  "shortName": "EX Rubi e Safira",
+  "serie": "EX",
+  "releaseYear": 2003,
+  "releaseDate": "2003-07-01",
+  "cardCount": 109,
+  "officialCount": 109,
+  "ligaSetCode": "RS",
+  "tcgdexSetId": "ex1",
+  "symbolUrl": "https://assets.tcgdex.net/univ/ex/ex1/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

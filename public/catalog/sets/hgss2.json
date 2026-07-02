@@ -1,0 +1,16 @@
+{
+  "id": "hgss2",
+  "name": "Revelado",
+  "shortName": "Revelado",
+  "serie": "HeartGold SoulSilver",
+  "releaseYear": 2010,
+  "releaseDate": "2010-05-12",
+  "cardCount": 95,
+  "officialCount": 95,
+  "ligaSetCode": "UL",
+  "tcgdexSetId": "hgss2",
+  "symbolUrl": "https://assets.tcgdex.net/univ/hgss/hgss2/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

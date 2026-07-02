@@ -1,0 +1,16 @@
+{
+  "id": "sp",
+  "name": "Sample",
+  "shortName": "Sample",
+  "serie": "E-Card",
+  "releaseYear": 2002,
+  "releaseDate": "2002-08-01",
+  "cardCount": 10,
+  "officialCount": 10,
+  "ligaSetCode": "SP",
+  "tcgdexSetId": "sp",
+  "symbolUrl": "https://assets.tcgdex.net/univ/ecard/sp/symbol",
+  "language": "en",
+  "hasPortugueseData": false,
+  "cards": []
+}

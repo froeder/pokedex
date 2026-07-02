@@ -1,0 +1,16 @@
+{
+  "id": "dp1",
+  "name": "Diamante & Pérola",
+  "shortName": "Diamante & Pérola",
+  "serie": "Diamante & Pérola",
+  "releaseYear": 2007,
+  "releaseDate": "2007-05-01",
+  "cardCount": 130,
+  "officialCount": 130,
+  "ligaSetCode": "DP",
+  "tcgdexSetId": "dp1",
+  "symbolUrl": "https://assets.tcgdex.net/univ/dp/dp1/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

@@ -1,0 +1,15 @@
+{
+  "id": "wp",
+  "name": "W Promotional",
+  "shortName": "W Promotional",
+  "serie": "Base",
+  "releaseYear": 1999,
+  "releaseDate": "1999-09-01",
+  "cardCount": 7,
+  "officialCount": 7,
+  "ligaSetCode": "WP",
+  "tcgdexSetId": "wp",
+  "language": "en",
+  "hasPortugueseData": false,
+  "cards": []
+}

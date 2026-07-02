@@ -1,0 +1,16 @@
+{
+  "id": "ex8",
+  "name": "EX Deoxys",
+  "shortName": "EX Deoxys",
+  "serie": "EX",
+  "releaseYear": 2005,
+  "releaseDate": "2005-02-01",
+  "cardCount": 107,
+  "officialCount": 107,
+  "ligaSetCode": "DX",
+  "tcgdexSetId": "ex8",
+  "symbolUrl": "https://assets.tcgdex.net/univ/ex/ex8/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

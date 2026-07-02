@@ -1,0 +1,16 @@
+{
+  "id": "ex9",
+  "name": "EX Esmeralda",
+  "shortName": "EX Esmeralda",
+  "serie": "EX",
+  "releaseYear": 2005,
+  "releaseDate": "2005-05-09",
+  "cardCount": 106,
+  "officialCount": 106,
+  "ligaSetCode": "EM",
+  "tcgdexSetId": "ex9",
+  "symbolUrl": "https://assets.tcgdex.net/univ/ex/ex9/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

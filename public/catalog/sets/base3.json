@@ -1,0 +1,16 @@
+{
+  "id": "base3",
+  "name": "Fóssil",
+  "shortName": "Fóssil",
+  "serie": "Coleção Básica",
+  "releaseYear": 1999,
+  "releaseDate": "1999-10-10",
+  "cardCount": 62,
+  "officialCount": 62,
+  "ligaSetCode": "FO",
+  "tcgdexSetId": "base3",
+  "symbolUrl": "https://assets.tcgdex.net/univ/base/base3/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}

@@ -1,0 +1,16 @@
+{
+  "id": "col1",
+  "name": "Chamado das Lendas",
+  "shortName": "Chamado das Lendas",
+  "serie": "Chamado das Lendas",
+  "releaseYear": 2011,
+  "releaseDate": "2011-02-09",
+  "cardCount": 95,
+  "officialCount": 95,
+  "ligaSetCode": "COL",
+  "tcgdexSetId": "col1",
+  "symbolUrl": "https://assets.tcgdex.net/univ/col/col1/symbol",
+  "language": "pt",
+  "hasPortugueseData": true,
+  "cards": []
+}
