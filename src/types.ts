@@ -59,12 +59,43 @@ export interface PriceQuote {
   cardName: string;
   collectionId: string;
   currency: 'BRL';
-  source: 'LigaPokemon' | 'Demo';
+  source: 'LigaPokemon' | 'Demo' | 'Unavailable';
   url?: string;
   price?: number;
   priceType?: 'average' | 'minimum';
   cached: boolean;
+  cacheVersion?: number;
+  unavailableReason?: string;
   fetchedAt: string;
   expiresAt?: string;
   variants: PriceVariant[];
+}
+
+export interface PokemonStat {
+  label: string;
+  value: number;
+}
+
+export interface PokemonProfile {
+  id: number;
+  name: string;
+  displayName: string;
+  sourceUrl: string;
+  spriteUrl?: string;
+  genus?: string;
+  flavorText?: string;
+  habitat?: string;
+  color?: string;
+  shape?: string;
+  captureRate?: number;
+  baseHappiness?: number;
+  isBaby: boolean;
+  isLegendary: boolean;
+  isMythical: boolean;
+  heightMeters?: number;
+  weightKg?: number;
+  abilities: string[];
+  types: string[];
+  stats: PokemonStat[];
+  evolutionChain: string[];
 }

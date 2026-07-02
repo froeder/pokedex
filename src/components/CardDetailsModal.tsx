@@ -1,18 +1,65 @@
 import { ExternalLink, RefreshCcw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
+import { hydrateCatalogCard } from '../services/catalogService';
+import { getPokemonProfile } from '../services/pokemonService';
 import { getCardPrice } from '../services/priceService';
-import type { PriceQuote, UserCard } from '../types';
+import type { CatalogCard, PokemonProfile, PriceQuote } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 import { formatBRL, formatDateTime } from '../utils/formatters';
 import { CardArtwork } from './CardArtwork';
 
 interface CardDetailsModalProps {
-  card: UserCard;
+  card: CatalogCard;
   onClose: () => void;
 }
 
+function getQuoteSourceLabel(source: PriceQuote['source']) {
+  if (source === 'LigaPokemon') {
+    return 'Liga Pokémon';
+  }
+
+  if (source === 'Demo') {
+    return 'Estimativa local';
+  }
+
+  if (source === 'Unavailable') {
+    return 'Liga Pokémon indisponível';
+  }
+
+  return source;
+}
+
+function formatMeasurement(value: number | undefined, unit: string) {
+  if (typeof value !== 'number') {
+    return '-';
+  }
+
+  return `${value.toLocaleString('pt-BR', {
+    maximumFractionDigits: 1,
+  })} ${unit}`;
+}
+
+function formatTrait(profile: PokemonProfile) {
+  if (profile.isMythical) {
+    return 'Mítico';
+  }
+
+  if (profile.isLegendary) {
+    return 'Lendário';
+  }
+
+  if (profile.isBaby) {
+    return 'Bebê';
+  }
+
+  return 'Pokémon';
+}
+
 export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
+  const [detailedCard, setDetailedCard] = useState<CatalogCard>(card);
+  const [pokemonProfile, setPokemonProfile] =
+    useState<PokemonProfile | null>(null);
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,7 +79,42 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
   useEffect(() => {
     let ignore = false;
 
-    getCardPrice(card)
+    hydrateCatalogCard(card)
+      .then((hydratedCard) => {
+        if (!ignore) {
+          setDetailedCard({
+            ...card,
+            ...hydratedCard,
+          });
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      ignore = true;
+    };
+  }, [card]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    getPokemonProfile(detailedCard)
+      .then((profile) => {
+        if (!ignore) {
+          setPokemonProfile(profile);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      ignore = true;
+    };
+  }, [detailedCard]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    getCardPrice(detailedCard)
       .then((nextQuote) => {
         if (!ignore) {
           setQuote(nextQuote);
@@ -52,7 +134,7 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
     return () => {
       ignore = true;
     };
-  }, [card, refreshToken]);
+  }, [detailedCard, refreshToken]);
 
   const primaryPriceLabel = useMemo(() => {
     if (!quote?.price) {
@@ -85,37 +167,37 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
 
         <div className="modal-media">
           <CardArtwork
-            card={card}
+            card={detailedCard}
             quality="high"
-            alt={`${card.name} ampliada`}
+            alt={`${detailedCard.name} ampliada`}
           />
         </div>
 
         <div className="modal-content">
           <div className="modal-title-block">
             <span>
-              {card.collectionName} #{card.number}
+              {detailedCard.collectionName} #{detailedCard.number}
             </span>
-            <h2 id="card-modal-title">{card.name}</h2>
+            <h2 id="card-modal-title">{detailedCard.name}</h2>
           </div>
 
           <div className="detail-kpis">
             <div>
               <span>HP</span>
-              <strong>{card.hp ?? '-'}</strong>
+              <strong>{detailedCard.hp ?? '-'}</strong>
             </div>
             <div>
               <span>Raridade</span>
-              <strong>{card.rarity}</strong>
+              <strong>{detailedCard.rarity || '-'}</strong>
             </div>
             <div>
               <span>Estágio</span>
-              <strong>{card.stage ?? '-'}</strong>
+              <strong>{detailedCard.stage ?? '-'}</strong>
             </div>
           </div>
 
           <div className="type-list modal-types">
-            {card.types.map((type) => (
+            {detailedCard.types.map((type) => (
               <span
                 className={`type-pill type-${getTypeClass(type)}`}
                 key={type}
@@ -125,9 +207,30 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
             ))}
           </div>
 
-          {card.attacks?.length ? (
+          <section className="card-info-panel" aria-label="Detalhes da carta">
+            <div>
+              <span>Coleção</span>
+              <strong>{detailedCard.collectionName}</strong>
+            </div>
+            <div>
+              <span>Número</span>
+              <strong>
+                {detailedCard.number}/{detailedCard.printedTotal}
+              </strong>
+            </div>
+            <div>
+              <span>Código Liga</span>
+              <strong>{detailedCard.ligaSetCode}</strong>
+            </div>
+            <div>
+              <span>Ilustrador</span>
+              <strong>{detailedCard.illustrator ?? '-'}</strong>
+            </div>
+          </section>
+
+          {detailedCard.attacks?.length ? (
             <div className="attack-list">
-              {card.attacks.map((attack) => (
+              {detailedCard.attacks.map((attack) => (
                 <div className="attack-row" key={attack.name}>
                   <div>
                     <strong>{attack.name}</strong>
@@ -137,6 +240,94 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
                 </div>
               ))}
             </div>
+          ) : null}
+
+          {pokemonProfile ? (
+            <section className="pokemon-panel" aria-label="Dados do Pokémon">
+              <div className="pokemon-panel-heading">
+                {pokemonProfile.spriteUrl ? (
+                  <img
+                    src={pokemonProfile.spriteUrl}
+                    alt=""
+                    loading="lazy"
+                  />
+                ) : null}
+                <div>
+                  <span>Pokémon #{pokemonProfile.id}</span>
+                  <h3>{pokemonProfile.displayName}</h3>
+                  <p>{pokemonProfile.genus ?? formatTrait(pokemonProfile)}</p>
+                </div>
+              </div>
+
+              {pokemonProfile.flavorText ? (
+                <p className="pokemon-flavor">{pokemonProfile.flavorText}</p>
+              ) : null}
+
+              <div className="type-list">
+                {pokemonProfile.types.map((type) => (
+                  <span className="type-pill type-Colorless" key={type}>
+                    {type}
+                  </span>
+                ))}
+              </div>
+
+              <div className="pokemon-facts">
+                <div>
+                  <span>Altura</span>
+                  <strong>
+                    {formatMeasurement(pokemonProfile.heightMeters, 'm')}
+                  </strong>
+                </div>
+                <div>
+                  <span>Peso</span>
+                  <strong>{formatMeasurement(pokemonProfile.weightKg, 'kg')}</strong>
+                </div>
+                <div>
+                  <span>Captura</span>
+                  <strong>{pokemonProfile.captureRate ?? '-'}</strong>
+                </div>
+                <div>
+                  <span>Categoria</span>
+                  <strong>{formatTrait(pokemonProfile)}</strong>
+                </div>
+              </div>
+
+              {pokemonProfile.abilities.length ? (
+                <div className="pokemon-detail-row">
+                  <span>Habilidades</span>
+                  <strong>{pokemonProfile.abilities.join(', ')}</strong>
+                </div>
+              ) : null}
+
+              {pokemonProfile.evolutionChain.length ? (
+                <div className="pokemon-detail-row">
+                  <span>Evolução</span>
+                  <strong>{pokemonProfile.evolutionChain.join(' > ')}</strong>
+                </div>
+              ) : null}
+
+              {pokemonProfile.stats.length ? (
+                <div className="pokemon-stats">
+                  {pokemonProfile.stats.map((stat) => (
+                    <div key={stat.label}>
+                      <span>{stat.label}</span>
+                      <meter min={0} max={255} value={stat.value} />
+                      <strong>{stat.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <a
+                className="external-link"
+                href={pokemonProfile.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ver na PokéAPI
+                <ExternalLink size={16} aria-hidden="true" />
+              </a>
+            </section>
           ) : null}
 
           <section className="price-panel" aria-label="Valor de mercado">
@@ -169,29 +360,39 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
                   <span>
                     {quote.cached
                       ? 'Cache Firestore'
-                      : quote.source === 'LigaPokemon'
-                        ? 'Liga Pokémon'
-                        : quote.source}
+                      : getQuoteSourceLabel(quote.source)}
                   </span>
                   <span>{formatDateTime(quote.fetchedAt)}</span>
                 </div>
 
-                <div className="variant-table" role="table">
-                  <div className="variant-row variant-head" role="row">
-                    <span>Extra</span>
-                    <span>Menor</span>
-                    <span>Médio</span>
-                    <span>Maior</span>
+                {quote.variants.length ? (
+                  <div className="price-variant-list">
+                    {quote.variants.map((variant) => (
+                      <article className="price-variant-card" key={variant.label}>
+                        <h3>{variant.label}</h3>
+                        <dl>
+                          <div>
+                            <dt>Menor preço</dt>
+                            <dd>{formatBRL(variant.minimum)}</dd>
+                          </div>
+                          <div>
+                            <dt>Preço médio</dt>
+                            <dd>{formatBRL(variant.average)}</dd>
+                          </div>
+                          <div>
+                            <dt>Maior preço</dt>
+                            <dd>{formatBRL(variant.maximum)}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    ))}
                   </div>
-                  {quote.variants.map((variant) => (
-                    <div className="variant-row" role="row" key={variant.label}>
-                      <span>{variant.label}</span>
-                      <span>{formatBRL(variant.minimum)}</span>
-                      <span>{formatBRL(variant.average)}</span>
-                      <span>{formatBRL(variant.maximum)}</span>
-                    </div>
-                  ))}
-                </div>
+                ) : (
+                  <div className="quote-empty">
+                    {quote.unavailableReason ??
+                      'A Liga Pokémon não retornou cotação para esta carta.'}
+                  </div>
+                )}
 
                 {quote.url ? (
                   <a

@@ -44,6 +44,24 @@ function writeLocalCards(uid: string, cards: UserCard[]) {
   window.dispatchEvent(new CustomEvent(LOCAL_COLLECTION_EVENT, { detail: uid }));
 }
 
+function removeUndefinedFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => removeUndefinedFields(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, removeUndefinedFields(item)]),
+    ) as T;
+  }
+
+  return value;
+}
+
 export function subscribeToUserCards(
   uid: string,
   onCards: (cards: UserCard[]) => void,
@@ -92,7 +110,7 @@ export async function addUserCard(uid: string, card: CatalogCard) {
     await setDoc(
       doc(db, 'users', uid, 'cards', card.id),
       {
-        ...card,
+        ...removeUndefinedFields(card),
         addedAt: serverTimestamp(),
       },
       { merge: true },

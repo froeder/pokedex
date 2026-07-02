@@ -48,6 +48,7 @@ input {
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 button:disabled {
@@ -108,7 +109,9 @@ img {
 .quote-meta,
 .external-link,
 .catalog-toolbar,
-.card-footer-row {
+.card-footer-row,
+.collection-panel-header,
+.catalog-summary {
   display: flex;
   align-items: center;
 }
@@ -399,6 +402,16 @@ img {
   min-height: 38px;
 }
 
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .stat-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -600,11 +613,44 @@ img {
   align-items: start;
 }
 
-.collection-sidebar {
+.collection-panel {
   display: grid;
   gap: 10px;
   position: sticky;
   top: 94px;
+  min-width: 0;
+}
+
+.collection-panel-header {
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.collection-panel-header strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.collection-panel-header > span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.collection-search {
+  width: 100%;
+}
+
+.collection-sidebar {
+  display: grid;
+  gap: 10px;
   max-height: calc(100vh - 116px);
   overflow: auto;
   padding-right: 4px;
@@ -623,6 +669,16 @@ img {
   background: #ffffff;
   color: var(--ink);
   text-align: left;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.collection-option:hover {
+  border-color: var(--blue);
+  box-shadow: 0 8px 18px rgb(31 35 41 / 8%);
+  transform: translateY(-1px);
 }
 
 .collection-option img,
@@ -694,6 +750,14 @@ img {
   padding: 0;
 }
 
+.catalog-summary {
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .catalog-card-list {
   display: grid;
   gap: 12px;
@@ -701,13 +765,39 @@ img {
 
 .catalog-card {
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
+  min-height: 124px;
   padding: 12px;
 }
 
-.catalog-card > img {
+.catalog-card-open {
+  display: grid;
+  grid-template-areas:
+    "art copy"
+    "art hint";
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: center;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.catalog-card-open:hover .catalog-card-hint {
+  color: var(--blue);
+}
+
+.catalog-card .secondary-action {
+  min-width: 132px;
+}
+
+.catalog-card-open > img {
+  grid-area: art;
   width: 74px;
   aspect-ratio: 245 / 337;
   object-fit: contain;
@@ -736,7 +826,8 @@ img {
   width: min(78%, 160px);
 }
 
-.catalog-card > .card-art-placeholder {
+.catalog-card-open > .card-art-placeholder {
+  grid-area: art;
   width: 74px;
 }
 
@@ -745,6 +836,7 @@ img {
 }
 
 .catalog-card-copy {
+  grid-area: copy;
   display: grid;
   min-width: 0;
   gap: 7px;
@@ -752,10 +844,25 @@ img {
 
 .catalog-card-copy h3 {
   font-size: 1.05rem;
+  overflow-wrap: anywhere;
 }
 
 .catalog-card-copy p {
   font-size: 0.9rem;
+}
+
+.catalog-card-hint {
+  grid-area: hint;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.catalog-empty {
+  padding-block: 44px;
 }
 
 .modal-backdrop {
@@ -837,6 +944,40 @@ img {
   margin-top: -6px;
 }
 
+.card-info-panel,
+.pokemon-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.card-info-panel div,
+.pokemon-facts div,
+.pokemon-detail-row {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px;
+  background: #ffffff;
+}
+
+.card-info-panel span,
+.pokemon-facts span,
+.pokemon-detail-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.card-info-panel strong,
+.pokemon-facts strong,
+.pokemon-detail-row strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 .attack-list {
   display: grid;
   gap: 10px;
@@ -862,6 +1003,76 @@ img {
   font-weight: 950;
 }
 
+.pokemon-panel {
+  display: grid;
+  gap: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #f7fafc;
+}
+
+.pokemon-panel-heading {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.pokemon-panel-heading img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.pokemon-panel-heading h3 {
+  margin: 3px 0 0;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.pokemon-panel-heading span,
+.pokemon-panel-heading p,
+.pokemon-flavor {
+  color: var(--muted);
+}
+
+.pokemon-panel-heading p,
+.pokemon-flavor {
+  margin: 6px 0 0;
+}
+
+.pokemon-detail-row {
+  background: #ffffff;
+}
+
+.pokemon-stats {
+  display: grid;
+  gap: 8px;
+}
+
+.pokemon-stats div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) 34px;
+  gap: 10px;
+  align-items: center;
+}
+
+.pokemon-stats span {
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.pokemon-stats strong {
+  text-align: right;
+}
+
+.pokemon-stats meter {
+  width: 100%;
+  height: 10px;
+}
+
 .price-panel {
   display: grid;
   gap: 12px;
@@ -885,34 +1096,60 @@ img {
   gap: 10px;
 }
 
-.variant-table {
+.price-variant-list {
   display: grid;
-  overflow: hidden;
+  gap: 10px;
+}
+
+.price-variant-card {
+  display: grid;
+  gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  padding: 12px;
+  background: #fbfaf7;
 }
 
-.variant-row {
+.price-variant-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.price-variant-card dl {
   display: grid;
-  grid-template-columns: 1.15fr repeat(3, minmax(86px, 1fr));
-  min-width: 520px;
+  gap: 8px;
+  margin: 0;
 }
 
-.variant-row span {
-  padding: 10px;
-  border-top: 1px solid var(--line);
+.price-variant-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
 }
 
-.variant-row span + span {
-  border-left: 1px solid var(--line);
+.price-variant-card dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
 }
 
-.variant-head span {
-  border-top: 0;
+.price-variant-card dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.quote-empty {
+  border-radius: 8px;
+  padding: 12px;
   background: #f7f2e9;
   color: var(--muted-strong);
-  font-size: 0.82rem;
-  font-weight: 950;
+  line-height: 1.4;
 }
 
 .external-link {
@@ -924,34 +1161,53 @@ img {
 
 @media (max-width: 900px) {
   .topbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .main-nav,
-  .account-area {
+  .main-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-self: stretch;
   }
 
-  .main-nav a {
-    flex: 1;
-    justify-content: center;
+  .account-area {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    justify-self: end;
   }
 
-  .account-area {
-    justify-content: space-between;
+  .main-nav a {
+    justify-content: center;
   }
 
   .catalog-layout {
     grid-template-columns: 1fr;
   }
 
+  .collection-panel {
+    position: static;
+  }
+
   .collection-sidebar {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(220px, 1fr);
+    grid-auto-columns: minmax(220px, 32%);
     overflow-x: auto;
-    position: static;
+    overflow-y: hidden;
     max-height: none;
     padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .collection-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .collection-option {
+    scroll-snap-align: start;
   }
 
   .catalog-toolbar {
@@ -982,12 +1238,54 @@ img {
   }
 
   .app-main {
-    width: min(100% - 24px, 1180px);
-    padding-top: 22px;
+    width: min(100% - 20px, 1180px);
+    padding: 20px 0 44px;
   }
 
   .topbar {
-    padding: 12px;
+    min-height: auto;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .brand-mark {
+    min-width: 0;
+  }
+
+  .brand-mark strong {
+    overflow: hidden;
+    font-size: 0.95rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .brand-mark span {
+    display: none;
+  }
+
+  .account-area {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .user-chip {
+    width: 38px;
+    max-width: 38px;
+    justify-content: center;
+  }
+
+  .user-chip span {
+    display: none;
+  }
+
+  .demo-badge {
+    display: none;
+  }
+
+  .main-nav a {
+    min-height: 42px;
+    padding: 0 8px;
+    font-size: 0.9rem;
   }
 
   .page-header {
@@ -1000,37 +1298,99 @@ img {
     font-size: 1.65rem;
   }
 
+  .primary-action,
+  .secondary-action {
+    min-height: 44px;
+  }
+
+  .page-header .primary-action {
+    width: 100%;
+  }
+
   .stat-strip {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stat-strip div {
+    padding: 12px;
   }
 
   .stat-strip div + div {
-    border-top: 1px solid var(--line);
-    border-left: 0;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .stat-strip strong {
+    overflow-wrap: anywhere;
+    font-size: 0.98rem;
   }
 
   .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .card-open-button {
-    min-height: 224px;
+    min-height: 206px;
+  }
+
+  .owned-card-body {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .card-footer-row {
+    align-items: end;
+  }
+
+  .collection-panel-header {
+    padding: 10px;
+  }
+
+  .collection-sidebar {
+    grid-auto-columns: minmax(178px, 82%);
+  }
+
+  .collection-option {
+    grid-template-columns: 30px minmax(0, 1fr);
+    min-height: 58px;
+    padding: 9px;
+  }
+
+  .collection-option img,
+  .collection-symbol-placeholder {
+    width: 28px;
+    height: 28px;
+    max-height: 28px;
+  }
+
+  .catalog-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .catalog-card {
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
-  .catalog-card > img {
-    width: 64px;
+  .catalog-card-open {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 4px 12px;
   }
 
-  .catalog-card > .card-art-placeholder {
-    width: 64px;
+  .catalog-card-open > img {
+    width: 58px;
+  }
+
+  .catalog-card-open > .card-art-placeholder {
+    width: 58px;
   }
 
   .catalog-card .secondary-action {
     grid-column: 1 / -1;
+    min-width: 0;
     width: 100%;
   }
 
@@ -1059,7 +1419,51 @@ img {
     grid-template-columns: 1fr;
   }
 
-  .variant-table {
-    overflow-x: auto;
+  .card-info-panel,
+  .pokemon-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pokemon-panel {
+    padding: 14px;
+  }
+
+  .pokemon-panel-heading {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .pokemon-panel-heading img {
+    width: 58px;
+    height: 58px;
+  }
+
+  .pokemon-panel-heading h3 {
+    font-size: 1.15rem;
+  }
+
+  .pokemon-stats div {
+    grid-template-columns: 74px minmax(0, 1fr) 30px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 380px) {
+  .main-nav a {
+    gap: 6px;
+    font-size: 0.82rem;
+  }
+
+  .card-open-button {
+    min-height: 184px;
+  }
+
+  .owned-card-body h3,
+  .catalog-card-copy h3 {
+    font-size: 0.95rem;
+  }
+
+  .card-info-panel,
+  .pokemon-facts {
+    grid-template-columns: 1fr;
   }
 }
