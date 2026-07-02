@@ -23,11 +23,23 @@ function getQuoteSourceLabel(source: PriceQuote['source']) {
     return 'Estimativa local';
   }
 
+  if (source === 'TCGdex') {
+    return 'TCGdex convertido para BRL';
+  }
+
   if (source === 'Unavailable') {
     return 'Liga Pokémon indisponível';
   }
 
   return source;
+}
+
+function getQuoteExternalLabel(source: PriceQuote['source']) {
+  if (source === 'TCGdex') {
+    return 'Abrir na TCGdex';
+  }
+
+  return 'Abrir na Liga Pokémon';
 }
 
 function formatMeasurement(value: number | undefined, unit: string) {
@@ -358,8 +370,8 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
               <>
                 <div className="quote-meta">
                   <span>
-                    {quote.cached
-                      ? 'Cache Firestore'
+                    {quote.cached && quote.source !== 'Unavailable'
+                      ? `${getQuoteSourceLabel(quote.source)} · cache`
                       : getQuoteSourceLabel(quote.source)}
                   </span>
                   <span>{formatDateTime(quote.fetchedAt)}</span>
@@ -401,7 +413,7 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Abrir na Liga Pokémon
+                    {getQuoteExternalLabel(quote.source)}
                     <ExternalLink size={16} aria-hidden="true" />
                   </a>
                 ) : null}

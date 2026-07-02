@@ -8,7 +8,7 @@ import {
 } from '../utils/firebaseErrors';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const PRICE_CACHE_VERSION = 2;
+const PRICE_CACHE_VERSION = 4;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
 
@@ -183,6 +183,7 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
         ligaSetCode: card.ligaSetCode,
         number: card.number,
         printedTotal: card.printedTotal,
+        tcgdexSetId: card.tcgdexSetId,
       },
     });
 

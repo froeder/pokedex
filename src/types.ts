@@ -59,7 +59,7 @@ export interface PriceQuote {
   cardName: string;
   collectionId: string;
   currency: 'BRL';
-  source: 'LigaPokemon' | 'Demo' | 'Unavailable';
+  source: 'LigaPokemon' | 'TCGdex' | 'Demo' | 'Unavailable';
   url?: string;
   price?: number;
   priceType?: 'average' | 'minimum';
