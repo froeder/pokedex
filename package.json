@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "catalog:sync": "node scripts/syncCatalog.mjs",
     "functions:install": "npm --prefix functions install",
-    "emulators": "firebase emulators:start"
+    "emulators": "firebase emulators:start",
+    "deploy": "npm run build && firebase deploy"
   },
   "dependencies": {
     "firebase": "^12.6.0",
