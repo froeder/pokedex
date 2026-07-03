@@ -45,6 +45,8 @@ export interface TcgCollection {
 
 export interface UserCard extends CatalogCard {
   addedAt: string;
+  quantity: number;
+  collectionCardCount?: number;
 }
 
 export interface PriceVariant {

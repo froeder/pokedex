@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -24,9 +25,12 @@ function toUserCard(data: DocumentData): UserCard {
       ? data.addedAt
       : data.addedAt?.toDate?.().toISOString() ?? new Date().toISOString();
 
+  const quantity = Number(data.quantity);
+
   return {
     ...(data as CatalogCard),
     addedAt,
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
   };
 }
 
@@ -105,27 +109,84 @@ export function subscribeToUserCards(
   };
 }
 
-export async function addUserCard(uid: string, card: CatalogCard) {
+export async function addUserCard(
+  uid: string,
+  card: CatalogCard,
+  quantity = 1,
+) {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity));
+
   if (db) {
+    const cardRef = doc(db, 'users', uid, 'cards', card.id);
+    const currentCard = await getDoc(cardRef);
+    const currentQuantity = currentCard.exists()
+      ? Number(currentCard.data().quantity ?? 1)
+      : 0;
+    let collectionCardCount: number | undefined;
+    try {
+      const mod = await import('./catalogService');
+      const collection = await mod.loadCollectionCards(card.collectionId);
+      collectionCardCount = collection?.cardCount;
+    } catch {
+      collectionCardCount = undefined;
+    }
+
     await setDoc(
-      doc(db, 'users', uid, 'cards', card.id),
+      cardRef,
       {
         ...removeUndefinedFields(card),
+        quantity: currentQuantity + normalizedQuantity,
         addedAt: serverTimestamp(),
+        collectionCardCount,
       },
       { merge: true },
     );
     return;
   }
 
-  const cards = readLocalCards(uid).filter((item) => item.id !== card.id);
+  const existingCards = readLocalCards(uid);
+  const existingCard = existingCards.find((item) => item.id === card.id);
+  const currentQuantity = existingCard?.quantity ?? 0;
+  let collectionCardCountLocal: number | undefined;
+  try {
+    const mod = await import('./catalogService');
+    const collection = await mod.loadCollectionCards(card.collectionId);
+    collectionCardCountLocal = collection?.cardCount;
+  } catch {
+    collectionCardCountLocal = undefined;
+  }
+
   writeLocalCards(uid, [
     {
       ...card,
+      quantity: currentQuantity + normalizedQuantity,
       addedAt: new Date().toISOString(),
+      collectionCardCount: collectionCardCountLocal,
     },
-    ...cards,
+    ...existingCards.filter((item) => item.id !== card.id),
   ]);
+}
+
+export async function updateUserCardQuantity(
+  uid: string,
+  cardId: string,
+  quantity: number,
+) {
+  const normalizedQuantity = Math.max(1, Math.floor(quantity));
+
+  if (db) {
+    await setDoc(
+      doc(db, 'users', uid, 'cards', cardId),
+      { quantity: normalizedQuantity },
+      { merge: true },
+    );
+    return;
+  }
+
+  const cards = readLocalCards(uid).map((card) =>
+    card.id === cardId ? { ...card, quantity: normalizedQuantity } : card,
+  );
+  writeLocalCards(uid, cards);
 }
 
 export async function removeUserCard(uid: string, cardId: string) {

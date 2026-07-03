@@ -34,7 +34,10 @@ export function CardGrid({
           <div className="owned-card-body">
             <div>
               <h3>{card.name}</h3>
-              <p>{card.collectionName}</p>
+              <div className="owned-card-meta">
+                <p>{card.collectionName}</p>
+                <span className="quantity-pill">x{card.quantity ?? 1}</span>
+              </div>
             </div>
 
             <div className="card-footer-row">
@@ -49,16 +52,18 @@ export function CardGrid({
                 ))}
               </div>
 
-              <button
-                className="icon-button subtle-danger"
-                type="button"
-                disabled={removingId === card.id}
-                onClick={() => onRemove(card.id)}
-                title="Remover"
-                aria-label={`Remover ${card.name}`}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
+              <div className="owned-card-actions">
+                <button
+                  className="icon-button subtle-danger"
+                  type="button"
+                  disabled={removingId === card.id}
+                  onClick={() => onRemove(card.id)}
+                  title="Remover"
+                  aria-label={`Remover ${card.name}`}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
         </article>

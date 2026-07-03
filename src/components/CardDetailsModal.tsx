@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCcw, X } from 'lucide-react';
+import { ExternalLink, LoaderCircle, RefreshCcw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import { hydrateCatalogCard } from '../services/catalogService';
@@ -10,8 +10,10 @@ import { formatBRL, formatDateTime } from '../utils/formatters';
 import { CardArtwork } from './CardArtwork';
 
 interface CardDetailsModalProps {
-  card: CatalogCard;
+  card: CatalogCard & { quantity?: number };
+  quantity?: number;
   onClose: () => void;
+  onUpdateQuantity?: (quantity: number) => void;
 }
 
 function getQuoteSourceLabel(source: PriceQuote['source']) {
@@ -68,12 +70,19 @@ function formatTrait(profile: PokemonProfile) {
   return 'Pokémon';
 }
 
-export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
+export function CardDetailsModal({
+  card,
+  quantity: initialQuantity = 1,
+  onClose,
+  onUpdateQuantity,
+}: CardDetailsModalProps) {
   const [detailedCard, setDetailedCard] = useState<CatalogCard>(card);
+  const [quantity, setQuantity] = useState(initialQuantity);
   const [pokemonProfile, setPokemonProfile] =
     useState<PokemonProfile | null>(null);
   const [quote, setQuote] = useState<PriceQuote | null>(null);
   const [loading, setLoading] = useState(true);
+  const [updatingQuantity, setUpdatingQuantity] = useState(false);
   const [error, setError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
 
@@ -106,6 +115,10 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
       ignore = true;
     };
   }, [card]);
+
+  useEffect(() => {
+    setQuantity(initialQuantity);
+  }, [initialQuantity]);
 
   useEffect(() => {
     let ignore = false;
@@ -147,6 +160,18 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
       ignore = true;
     };
   }, [detailedCard, refreshToken]);
+
+  async function handleQuantityChange(nextValue: number) {
+    const normalizedValue = Math.max(1, Math.floor(nextValue));
+    setQuantity(normalizedValue);
+    setUpdatingQuantity(true);
+
+    try {
+      await onUpdateQuantity?.(normalizedValue);
+    } finally {
+      setUpdatingQuantity(false);
+    }
+  }
 
   const primaryPriceLabel = useMemo(() => {
     if (!quote?.price) {
@@ -342,11 +367,72 @@ export function CardDetailsModal({ card, onClose }: CardDetailsModalProps) {
             </section>
           ) : null}
 
+          <section className="quantity-panel" aria-label="Quantidade da carta">
+            <div className="quantity-panel-heading">
+              <div>
+                <span>Quantidade</span>
+                <strong>{quantity} unidade(s)</strong>
+              </div>
+              <div className="quantity-stepper">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={updatingQuantity}
+                  onClick={() => void handleQuantityChange(quantity - 1)}
+                  title="Diminuir quantidade"
+                  aria-label="Diminuir quantidade"
+                >
+                  {updatingQuantity ? (
+                    <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                  ) : (
+                    <span>-</span>
+                  )}
+                </button>
+                <input
+                  aria-label="Quantidade da carta"
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={quantity}
+                  onChange={(event) => {
+                    const nextValue = Number.parseInt(event.target.value || '1', 10);
+                    void handleQuantityChange(
+                      Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1,
+                    );
+                  }}
+                />
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={updatingQuantity}
+                  onClick={() => void handleQuantityChange(quantity + 1)}
+                  title="Aumentar quantidade"
+                  aria-label="Aumentar quantidade"
+                >
+                  {updatingQuantity ? (
+                    <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                  ) : (
+                    <span>+</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+
           <section className="price-panel" aria-label="Valor de mercado">
             <div className="price-heading">
               <div>
                 <span>Valor de mercado</span>
-                <strong>{loading ? 'Consultando...' : primaryPriceLabel}</strong>
+                <strong>
+                  {loading ? (
+                    <span className="loading-inline">
+                      <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                      Consultando...
+                    </span>
+                  ) : (
+                    primaryPriceLabel
+                  )}
+                </strong>
               </div>
               <button
                 className="icon-button"

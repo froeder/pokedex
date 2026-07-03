@@ -57,7 +57,12 @@ export function AddCardPage() {
   const [collectionQuery, setCollectionQuery] = useState('');
   const [cardQuery, setCardQuery] = useState('');
   const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
-  const [addedIds, setAddedIds] = useState<Set<string>>(() => new Set());
+  const [ownedQuantities, setOwnedQuantities] = useState<Record<string, number>>(
+    {},
+  );
+  const [cardQuantities, setCardQuantities] = useState<Record<string, number>>(
+    {},
+  );
   const [addingId, setAddingId] = useState<string>();
   const [loadingCollections, setLoadingCollections] = useState(true);
   const [loadingCards, setLoadingCards] = useState(false);
@@ -111,7 +116,9 @@ export function AddCardPage() {
     return subscribeToUserCards(
       user.uid,
       (cards) => {
-        setAddedIds(new Set(cards.map((card) => card.id)));
+        setOwnedQuantities(
+          Object.fromEntries(cards.map((card) => [card.id, card.quantity ?? 1])),
+        );
       },
       (subscriptionError) => {
         setError(getFriendlyFirebaseError(subscriptionError));
@@ -163,12 +170,15 @@ export function AddCardPage() {
 
   const filteredCollections = useMemo(() => {
     const normalizedQuery = normalizeSearch(collectionQuery.trim());
+    const nextCollections = [...collections].sort((first, second) =>
+      first.name.localeCompare(second.name, 'pt-BR'),
+    );
 
     if (!normalizedQuery) {
-      return collections;
+      return nextCollections;
     }
 
-    return collections.filter((collection) =>
+    return nextCollections.filter((collection) =>
       getCollectionText(collection).includes(normalizedQuery),
     );
   }, [collectionQuery, collections]);
@@ -176,26 +186,38 @@ export function AddCardPage() {
   const filteredCards = useMemo(() => {
     const cards = activeCollection?.cards ?? [];
     const normalizedQuery = normalizeSearch(cardQuery.trim());
+    const nextCards = [...cards].sort((first, second) =>
+      first.name.localeCompare(second.name, 'pt-BR'),
+    );
 
     if (!normalizedQuery) {
-      return cards;
+      return nextCards;
     }
 
-    return cards.filter((card) => getCardText(card).includes(normalizedQuery));
+    return nextCards.filter((card) => getCardText(card).includes(normalizedQuery));
   }, [activeCollection, cardQuery]);
 
   async function handleAddCard(card: CatalogCard) {
-    if (!user || addingId || addedIds.has(card.id)) {
+    if (!user || addingId) {
       return;
     }
 
+    const normalizedQuantity = Math.max(
+      1,
+      Math.floor(cardQuantities[card.id] || 1),
+    );
+
     setAddingId(card.id);
     setError('');
+    setCardQuery('');
 
     try {
       const hydratedCard = await hydrateCatalogCard(card);
-      await addUserCard(user.uid, hydratedCard);
-      setAddedIds((currentIds) => new Set(currentIds).add(card.id));
+      await addUserCard(user.uid, hydratedCard, normalizedQuantity);
+      setOwnedQuantities((currentQuantities) => ({
+        ...currentQuantities,
+        [card.id]: (currentQuantities[card.id] ?? 0) + normalizedQuantity,
+      }));
     } catch (addError) {
       setError(getFriendlyFirebaseError(addError));
     } finally {
@@ -340,7 +362,8 @@ export function AddCardPage() {
           {!loadingCards && filteredCards.length > 0 ? (
             <div className="catalog-card-list">
               {filteredCards.map((card) => {
-                const isAdded = addedIds.has(card.id);
+                const ownedQuantity = ownedQuantities[card.id] ?? 0;
+                const isAdded = ownedQuantity > 0;
                 const isAdding = addingId === card.id;
 
                 return (
@@ -381,31 +404,55 @@ export function AddCardPage() {
                       </span>
                     </button>
 
-                    <button
-                      className={`secondary-action ${
-                        isAdded ? 'success' : ''
-                      }`}
-                      disabled={isAdded || isAdding}
-                      type="button"
-                      onClick={() => void handleAddCard(card)}
-                    >
-                      {isAdding ? (
-                        <LoaderCircle
-                          className="spin"
-                          size={18}
-                          aria-hidden="true"
+                    <div className="catalog-card-actions">
+                      <label className="quantity-field">
+                        <span>Qtd.</span>
+                        <input
+                          aria-label={`Quantidade de ${card.name}`}
+                          min="1"
+                          step="1"
+                          type="number"
+                          value={cardQuantities[card.id] ?? 1}
+                          onChange={(event) => {
+                            const nextValue = Number.parseInt(
+                              event.target.value || '1',
+                              10,
+                            );
+                            setCardQuantities((currentQuantities) => ({
+                              ...currentQuantities,
+                              [card.id]:
+                                Number.isFinite(nextValue) && nextValue > 0
+                                  ? nextValue
+                                  : 1,
+                            }));
+                          }}
                         />
-                      ) : isAdded ? (
-                        <Check size={18} aria-hidden="true" />
-                      ) : (
-                        <Plus size={18} aria-hidden="true" />
-                      )}
-                      {isAdding
-                        ? 'Adicionando...'
-                        : isAdded
-                          ? 'Adicionada'
-                          : 'Adicionar'}
-                    </button>
+                      </label>
+
+                      <button
+                        className={`secondary-action ${isAdded ? 'success' : ''}`}
+                        disabled={isAdding}
+                        type="button"
+                        onClick={() => void handleAddCard(card)}
+                      >
+                        {isAdding ? (
+                          <LoaderCircle
+                            className="spin"
+                            size={18}
+                            aria-hidden="true"
+                          />
+                        ) : isAdded ? (
+                          <Check size={18} aria-hidden="true" />
+                        ) : (
+                          <Plus size={18} aria-hidden="true" />
+                        )}
+                        {isAdding
+                          ? 'Adicionando...'
+                          : isAdded
+                            ? 'Adicionar mais'
+                            : 'Adicionar'}
+                      </button>
+                    </div>
                   </article>
                 );
               })}
