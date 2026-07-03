@@ -1,5 +1,6 @@
+import { getColorSync } from 'colorthief';
 import { ExternalLink, LoaderCircle, RefreshCcw, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import { hydrateCatalogCard } from '../services/catalogService';
 import { getPokemonProfile } from '../services/pokemonService';
@@ -59,6 +60,52 @@ function formatMeasurement(value: number | undefined, unit: string) {
   })} ${unit}`;
 }
 
+function rgbToHex([red, green, blue]: [number, number, number]) {
+  return `#${[red, green, blue]
+    .map((channel) => Math.max(0, Math.min(255, channel)).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function mixColors(baseColor: string, blendColor: string, amount: number) {
+  const base = baseColor.replace('#', '');
+  const blend = blendColor.replace('#', '');
+
+  if (base.length !== 6 || blend.length !== 6) {
+    return baseColor;
+  }
+
+  const baseRgb = [0, 2, 4].map((index) => Number.parseInt(base.slice(index, index + 2), 16));
+  const blendRgb = [0, 2, 4].map((index) => Number.parseInt(blend.slice(index, index + 2), 16));
+  const mixedRgb = baseRgb.map((channel, index) =>
+    Math.round(channel * (1 - amount) + blendRgb[index] * amount),
+  ) as [number, number, number];
+
+  return rgbToHex(mixedRgb);
+}
+
+function getReadableTextColor(backgroundColor: string) {
+  const normalized = backgroundColor.replace('#', '');
+  if (normalized.length !== 6) {
+    return '#111827';
+  }
+
+  const [red, green, blue] = [0, 2, 4].map((index) =>
+    Number.parseInt(normalized.slice(index, index + 2), 16),
+  );
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance > 0.62 ? '#111827' : '#ffffff';
+}
+
+function createThemePalette(dominantColor: string) {
+  return {
+    accent: dominantColor,
+    soft: mixColors(dominantColor, '#ffffff', 0.78),
+    surface: mixColors(dominantColor, '#fffaf5', 0.14),
+    border: mixColors(dominantColor, '#ffffff', 0.5),
+    text: getReadableTextColor(dominantColor),
+  };
+}
+
 function formatTrait(profile: PokemonProfile) {
   if (profile.isMythical) {
     return 'Mítico';
@@ -98,6 +145,13 @@ export function CardDetailsModal({
   const [updatingQuantity, setUpdatingQuantity] = useState(false);
   const [error, setError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
+  const [themePalette, setThemePalette] = useState({
+    accent: '#c43d3d',
+    soft: '#fae9e7',
+    surface: '#fdf4ef',
+    border: '#f0b7ab',
+    text: '#111827',
+  });
   const quantity =
     quantityDraft.cardId === card.id ? quantityDraft.value : initialQuantity;
   const pokemonProfile =
@@ -136,6 +190,66 @@ export function CardDetailsModal({
       ignore = true;
     };
   }, [card]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    if (!detailedCard.imageUrl) {
+      setThemePalette({
+        accent: '#c43d3d',
+        soft: '#fae9e7',
+        surface: '#fdf4ef',
+        border: '#f0b7ab',
+        text: '#111827',
+      });
+      return undefined;
+    }
+
+    const artworkUrl = `${detailedCard.imageUrl}/high.webp`;
+    const artworkImage = new Image();
+    artworkImage.crossOrigin = 'Anonymous';
+
+    artworkImage.onload = () => {
+      try {
+        const color = getColorSync(artworkImage);
+        if (!color) {
+          throw new Error('No color extracted');
+        }
+        const [red, green, blue] = color.array();
+        if (!ignore) {
+          setThemePalette(createThemePalette(rgbToHex([red, green, blue])));
+        }
+      } catch {
+        if (!ignore) {
+          setThemePalette({
+            accent: '#c43d3d',
+            soft: '#fae9e7',
+            surface: '#fdf4ef',
+            border: '#f0b7ab',
+            text: '#111827',
+          });
+        }
+      }
+    };
+
+    artworkImage.onerror = () => {
+      if (!ignore) {
+        setThemePalette({
+          accent: '#c43d3d',
+          soft: '#fae9e7',
+          surface: '#fdf4ef',
+          border: '#f0b7ab',
+          text: '#111827',
+        });
+      }
+    };
+
+    artworkImage.src = artworkUrl;
+
+    return () => {
+      ignore = true;
+    };
+  }, [detailedCard.imageUrl]);
 
   useEffect(() => {
     if (card.pokemonProfile != null) {
@@ -220,11 +334,23 @@ export function CardDetailsModal({
       : `${formatBRL(visibleQuote.price)} preço médio`;
   }, [visibleQuote]);
 
+  const modalStyle = useMemo<CSSProperties>(
+    () => ({
+      '--card-theme-accent': themePalette.accent,
+      '--card-theme-soft': themePalette.soft,
+      '--card-theme-surface': themePalette.surface,
+      '--card-theme-border': themePalette.border,
+      '--card-theme-text': themePalette.text,
+    } as CSSProperties),
+    [themePalette],
+  );
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="card-modal"
         role="dialog"
+        style={modalStyle}
         aria-modal="true"
         aria-labelledby="card-modal-title"
         onMouseDown={(event) => event.stopPropagation()}

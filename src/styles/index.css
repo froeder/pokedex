@@ -1067,8 +1067,10 @@ img {
   max-height: min(760px, calc(100vh - 44px));
   overflow: auto;
   border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid var(--card-theme-border, var(--line));
+  background: var(--card-theme-surface, var(--surface));
   box-shadow: 0 28px 70px rgb(0 0 0 / 26%);
+  color: var(--card-theme-text, var(--ink));
 }
 
 .modal-close {
@@ -1083,7 +1085,7 @@ img {
   min-height: 520px;
   place-items: center;
   padding: 34px 26px;
-  background: #ece7dd;
+  background: linear-gradient(135deg, var(--card-theme-accent, var(--red)) 0%, var(--card-theme-soft, var(--red-soft)) 100%);
 }
 
 .modal-media img {
@@ -1114,10 +1116,10 @@ img {
 
 .detail-kpis div {
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-theme-border, var(--line));
   border-radius: 8px;
   padding: 12px;
-  background: #ffffff;
+  background: color-mix(in srgb, var(--card-theme-soft, #ffffff) 70%, white 30%);
 }
 
 .detail-kpis strong {
@@ -1139,10 +1141,10 @@ img {
 .pokemon-facts div,
 .pokemon-detail-row {
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-theme-border, var(--line));
   border-radius: 8px;
   padding: 11px;
-  background: #ffffff;
+  background: color-mix(in srgb, var(--card-theme-soft, #ffffff) 55%, white 45%);
 }
 
 .card-info-panel span,
@@ -1173,8 +1175,8 @@ img {
   gap: 14px;
   align-items: start;
   padding: 12px;
-  border-left: 4px solid var(--blue);
-  background: var(--blue-soft);
+  border-left: 4px solid var(--card-theme-accent, var(--red));
+  background: color-mix(in srgb, var(--card-theme-soft, var(--red-soft)) 75%, white 25%);
 }
 
 .attack-row strong {
@@ -1182,7 +1184,7 @@ img {
 }
 
 .attack-row > span {
-  color: var(--blue);
+  color: var(--card-theme-accent, var(--red));
   font-size: 1.15rem;
   font-weight: 950;
 }
@@ -1190,10 +1192,10 @@ img {
 .pokemon-panel {
   display: grid;
   gap: 13px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-theme-border, var(--line));
   border-radius: 8px;
   padding: 16px;
-  background: #f7fafc;
+  background: color-mix(in srgb, var(--card-theme-soft, #f7fafc) 70%, white 30%);
 }
 
 .pokemon-panel-heading {
@@ -1260,10 +1262,10 @@ img {
 .price-panel {
   display: grid;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-theme-border, var(--line));
   border-radius: 8px;
   padding: 16px;
-  background: #ffffff;
+  background: color-mix(in srgb, var(--card-theme-soft, #ffffff) 55%, white 45%);
 }
 
 .price-heading {
