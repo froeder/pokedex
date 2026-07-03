@@ -1,9 +1,53 @@
-import { Grid2X2, LibraryBig, LogOut, Plus, UserCircle } from 'lucide-react';
+import { Download, Grid2X2, LibraryBig, LogOut, Plus, UserCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
+type InstallPromptOutcome = {
+  outcome: 'accepted' | 'dismissed';
+  platform: string;
+};
+
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<InstallPromptOutcome>;
+  prompt: () => Promise<void>;
+}
+
 export function AppShell() {
   const { isDemoMode, logout, user } = useAuth();
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) {
+      return;
+    }
+
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  };
 
   return (
     <div className="app-shell">
@@ -29,6 +73,17 @@ export function AppShell() {
 
         <div className="account-area">
           {isDemoMode ? <span className="demo-badge">Demo local</span> : null}
+          {installPrompt ? (
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => void handleInstall()}
+              title="Instalar app"
+              aria-label="Instalar app"
+            >
+              <Download size={18} aria-hidden="true" />
+            </button>
+          ) : null}
           <div className="user-chip">
             <UserCircle size={18} aria-hidden="true" />
             <span>{user?.displayName || user?.email}</span>

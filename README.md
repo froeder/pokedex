@@ -71,9 +71,17 @@ Cloud Function consulta a Liga Pokémon, atualiza o cache e retorna o valor.
 npm run dev
 npm run build
 npm run lint
+npm run pwa:icons
 npm run emulators
 firebase deploy --only hosting,functions,firestore
 ```
+
+## Instalação no celular
+
+O app está configurado como PWA. Depois de publicar em HTTPS, o Android/Chrome
+mostra a opção de instalação e o iPhone/Safari permite adicionar o app à Tela de
+Início pelo menu de compartilhamento. Ao abrir pelo ícone instalado, ele roda em
+modo standalone, com ícone próprio e cache básico para carregar a interface.
 
 ## Catálogo
 

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
+    "pwa:icons": "node scripts/generatePwaIcons.mjs",
     "catalog:sync": "node scripts/syncCatalog.mjs",
     "functions:install": "npm --prefix functions install",
     "emulators": "firebase emulators:start",
