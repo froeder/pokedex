@@ -2,8 +2,7 @@
 
 Sistema de gestão de portfólio para colecionadores de Pokémon TCG no Brasil.
 O app usa catálogo local em PT-BR, autenticação Firebase, Firestore para a
-coleção do usuário e uma Cloud Function para consultar/cachar preços da Liga
-Pokémon por 44 horas.
+coleção do usuário e preços da TCGdex convertidos para BRL pela Frankfurter.
 
 ## Stack
 
@@ -23,8 +22,7 @@ npm run dev
 ```
 
 Sem variáveis Firebase preenchidas, o app entra em modo demo e persiste as
-cartas no `localStorage`. Com Firebase configurado, ele usa Auth, Firestore e a
-Function `getCardMarketPrice`.
+cartas no `localStorage`. Com Firebase configurado, ele usa Auth e Firestore.
 
 Se aparecer `Missing or insufficient permissions`, as regras do Firestore ainda
 não foram publicadas no projeto selecionado:
@@ -62,10 +60,10 @@ VITE_FIREBASE_FUNCTIONS_REGION=southamerica-east1
 - `users/{uid}/cards/{cardId}`: cartas salvas na coleção.
 - `priceCache/{cardId}`: última cotação, variantes de preço e expiração.
 
-O frontend lê `priceCache` primeiro. Se a cotação da Liga Pokémon estiver
-vencida ou ausente, a Cloud Function consulta a Liga Pokémon, atualiza o cache
-e retorna o valor. Cotações antigas de fontes alternativas não são reutilizadas
-para preço.
+O frontend lê `priceCache` primeiro. Se houver cotação fresca, ela é
+reutilizada; quando uma nova consulta é necessária, o app busca preços na
+TCGdex, converte EUR/USD para BRL pela Frankfurter e usa uma estimativa local se
+as APIs externas não retornarem cotação.
 Ao adicionar uma carta, ou ao abrir os detalhes de uma carta já salva que ainda
 não tenha cotação fresca, o app grava a `priceQuote` também em
 `users/{uid}/cards/{cardId}` para reutilizar o preço salvo antes de chamar a API.

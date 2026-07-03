@@ -1,7 +1,7 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/config';
-import type { CatalogCard, PriceQuote } from '../types';
+import type { CatalogCard, PriceQuote, PriceVariant } from '../types';
 import {
   getFirebaseErrorCode,
   isPermissionError,
@@ -11,11 +11,67 @@ const CACHE_TTL_MS = 44 * 60 * 60 * 1000;
 const PRICE_CACHE_VERSION = 4;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
+const USE_LIGA_PRICE_API = false;
+const TCGDEX_API_URL = 'https://api.tcgdex.net/v2';
+const FRANKFURTER_API_URL = 'https://api.frankfurter.dev/v2';
+
+type ExchangeCurrency = 'EUR' | 'USD';
 
 type FirestoreTimestamp = {
   toDate?: () => Date;
   seconds?: number;
 };
+
+type ExchangeRateCacheEntry = {
+  rate: number;
+  expiresAt: number;
+};
+
+type FrankfurterRateResponse = {
+  rate?: number;
+};
+
+type TcgDexCardmarketPricing = {
+  unit?: string;
+  updated?: string;
+  avg?: number;
+  low?: number;
+  trend?: number;
+  avg1?: number;
+  avg7?: number;
+  avg30?: number;
+  'avg-holo'?: number;
+  'low-holo'?: number;
+  'trend-holo'?: number;
+  'avg1-holo'?: number;
+  'avg7-holo'?: number;
+  'avg30-holo'?: number;
+};
+
+type TcgDexTcgPlayerVariant = {
+  lowPrice?: number;
+  midPrice?: number;
+  highPrice?: number;
+  marketPrice?: number;
+  directLowPrice?: number;
+};
+
+type TcgDexTcgPlayerPricing = {
+  unit?: string;
+  updated?: string;
+  [variant: string]: string | TcgDexTcgPlayerVariant | undefined;
+};
+
+type TcgDexCardDetail = {
+  id?: string;
+  name?: string;
+  pricing?: {
+    cardmarket?: TcgDexCardmarketPricing;
+    tcgplayer?: TcgDexTcgPlayerPricing;
+  };
+};
+
+const exchangeRateCache = new Map<ExchangeCurrency, ExchangeRateCacheEntry>();
 
 function toIsoDate(value: unknown): string {
   if (typeof value === 'string') {
@@ -42,6 +98,16 @@ function normalizeQuote(rawQuote: Record<string, unknown>): PriceQuote {
   };
 }
 
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Não foi possível carregar ${url}.`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export function isPriceQuoteFresh(
   quote: Pick<PriceQuote, 'expiresAt' | 'fetchedAt'>,
 ) {
@@ -56,9 +122,7 @@ export function canReusePriceQuote(
   quote: Pick<PriceQuote, 'expiresAt' | 'fetchedAt' | 'source'>,
 ) {
   const reusableSource =
-    quote.source === 'LigaPokemon' ||
-    quote.source === 'Unavailable' ||
-    quote.source === 'Demo';
+    quote.source === 'LigaPokemon' || quote.source === 'Demo';
 
   return reusableSource && isPriceQuoteFresh(quote);
 }
@@ -93,26 +157,233 @@ function createDemoQuote(card: CatalogCard): PriceQuote {
   };
 }
 
-function createUnavailableQuote(
+function convertToBRL(value: number | undefined, rate: number) {
+  if (typeof value !== 'number') {
+    return undefined;
+  }
+
+  return Number((value * rate).toFixed(2));
+}
+
+function hasQuotedValue(variant: PriceVariant) {
+  return (
+    typeof variant.minimum === 'number' ||
+    typeof variant.average === 'number' ||
+    typeof variant.maximum === 'number'
+  );
+}
+
+function pickPrimaryPrice(variants: PriceVariant[]) {
+  const variantWithAverage = variants.find(
+    (variant) => typeof variant.average === 'number',
+  );
+
+  if (variantWithAverage?.average) {
+    return {
+      price: variantWithAverage.average,
+      priceType: 'average' as const,
+    };
+  }
+
+  const variantWithMinimum = variants.find(
+    (variant) => typeof variant.minimum === 'number',
+  );
+
+  if (variantWithMinimum?.minimum) {
+    return {
+      price: variantWithMinimum.minimum,
+      priceType: 'minimum' as const,
+    };
+  }
+
+  return {
+    price: undefined,
+    priceType: undefined,
+  };
+}
+
+function getTcgDexCardUrl(card: CatalogCard, language: string) {
+  const tcgdexSetId = card.tcgdexSetId ?? card.collectionId;
+
+  return `${TCGDEX_API_URL}/${language}/sets/${encodeURIComponent(
+    tcgdexSetId,
+  )}/${encodeURIComponent(card.number)}`;
+}
+
+async function getExchangeRate(currency: ExchangeCurrency) {
+  const cachedRate = exchangeRateCache.get(currency);
+
+  if (cachedRate && Date.now() < cachedRate.expiresAt) {
+    return cachedRate.rate;
+  }
+
+  const response = await fetchJson<FrankfurterRateResponse>(
+    `${FRANKFURTER_API_URL}/rate/${currency}/BRL`,
+  );
+
+  if (typeof response.rate !== 'number') {
+    throw new Error(`Frankfurter não retornou câmbio ${currency}/BRL.`);
+  }
+
+  exchangeRateCache.set(currency, {
+    rate: response.rate,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+
+  return response.rate;
+}
+
+async function fetchTcgDexCard(card: CatalogCard) {
+  const preferredLanguage = card.imageUrl.includes('/pt/') ? 'pt' : 'en';
+  const languages = [...new Set([preferredLanguage, 'en'])];
+  let lastError: unknown;
+
+  for (const language of languages) {
+    const url = getTcgDexCardUrl(card, language);
+
+    try {
+      return {
+        detail: await fetchJson<TcgDexCardDetail>(url),
+        url,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Não foi possível consultar a TCGdex.');
+}
+
+async function getCardmarketVariants(
+  pricing: TcgDexCardmarketPricing | undefined,
+) {
+  if (!pricing) {
+    return [];
+  }
+
+  const rate = await getExchangeRate('EUR');
+  const variants: PriceVariant[] = [
+    {
+      label: 'Cardmarket',
+      minimum: convertToBRL(pricing.low, rate),
+      average: convertToBRL(
+        pricing.trend ?? pricing.avg ?? pricing.avg30,
+        rate,
+      ),
+    },
+    {
+      label: 'Cardmarket Holo',
+      minimum: convertToBRL(pricing['low-holo'], rate),
+      average: convertToBRL(
+        pricing['trend-holo'] ?? pricing['avg-holo'] ?? pricing['avg30-holo'],
+        rate,
+      ),
+    },
+  ];
+
+  return variants.filter(hasQuotedValue);
+}
+
+function isTcgPlayerVariant(
+  value: string | TcgDexTcgPlayerVariant | undefined,
+): value is TcgDexTcgPlayerVariant {
+  return Boolean(value && typeof value === 'object');
+}
+
+function getTcgPlayerVariantLabel(key: string) {
+  const labels: Record<string, string> = {
+    normal: 'TCGplayer Normal',
+    holofoil: 'TCGplayer Holo',
+    holo: 'TCGplayer Holo',
+    reverse: 'TCGplayer Reverso',
+    'reverse-holofoil': 'TCGplayer Reverso',
+    reverseHolofoil: 'TCGplayer Reverso',
+  };
+
+  return labels[key] ?? `TCGplayer ${key}`;
+}
+
+async function getTcgPlayerVariants(
+  pricing: TcgDexTcgPlayerPricing | undefined,
+) {
+  if (!pricing) {
+    return [];
+  }
+
+  const rate = await getExchangeRate('USD');
+  const variants: PriceVariant[] = [];
+
+  for (const [key, value] of Object.entries(pricing)) {
+    if (!isTcgPlayerVariant(value)) {
+      continue;
+    }
+
+    variants.push({
+      label: getTcgPlayerVariantLabel(key),
+      minimum: convertToBRL(value.lowPrice ?? value.directLowPrice, rate),
+      average: convertToBRL(value.marketPrice ?? value.midPrice, rate),
+      maximum: convertToBRL(value.highPrice, rate),
+    });
+  }
+
+  return variants.filter(hasQuotedValue);
+}
+
+function getLatestIsoDate(...values: Array<string | undefined>) {
+  const latest = values
+    .map((value) => (value ? new Date(value).getTime() : Number.NaN))
+    .filter(Number.isFinite)
+    .sort((first, second) => second - first)[0];
+
+  return typeof latest === 'number'
+    ? new Date(latest).toISOString()
+    : new Date().toISOString();
+}
+
+async function getTcgDexPriceQuote(
   card: CatalogCard,
-  error?: unknown,
-): PriceQuote {
-  const fetchedAt = new Date().toISOString();
-  const message = error instanceof Error ? error.message : undefined;
+): Promise<PriceQuote | null> {
+  const { detail, url } = await fetchTcgDexCard(card);
+  const pricing = detail.pricing;
+
+  if (!pricing) {
+    return null;
+  }
+
+  const [cardmarketResult, tcgplayerResult] = await Promise.allSettled([
+    getCardmarketVariants(pricing.cardmarket),
+    getTcgPlayerVariants(pricing.tcgplayer),
+  ]);
+  const variants = [
+    ...(cardmarketResult.status === 'fulfilled' ? cardmarketResult.value : []),
+    ...(tcgplayerResult.status === 'fulfilled' ? tcgplayerResult.value : []),
+  ];
+
+  if (!variants.length) {
+    return null;
+  }
+
+  const primaryPrice = pickPrimaryPrice(variants);
+  const fetchedAt = getLatestIsoDate(
+    pricing.cardmarket?.updated,
+    pricing.tcgplayer?.updated,
+  );
 
   return {
     cardId: card.id,
-    cardName: card.name,
+    cardName: detail.name ?? card.name,
     collectionId: card.collectionId,
     currency: 'BRL',
-    source: 'Unavailable',
+    source: 'TCGdex',
+    url,
     cached: false,
     cacheVersion: PRICE_CACHE_VERSION,
-    unavailableReason:
-      message ?? 'A Liga Pokémon não retornou cotação para esta carta.',
     fetchedAt,
-    expiresAt: new Date(Date.now() + UNAVAILABLE_TTL_MS).toISOString(),
-    variants: [],
+    expiresAt: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+    variants,
+    ...primaryPrice,
   };
 }
 
@@ -153,7 +424,11 @@ function rememberUnavailablePriceFunction() {
 
 export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
   if (!db || !functions) {
-    return createDemoQuote(card);
+    try {
+      return (await getTcgDexPriceQuote(card)) ?? createDemoQuote(card);
+    } catch {
+      return createDemoQuote(card);
+    }
   }
 
   try {
@@ -177,11 +452,18 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
     }
   }
 
-  if (isPriceFunctionCoolingDown()) {
-    return createUnavailableQuote(
-      card,
-      new Error('A função de cotação está temporariamente indisponível.'),
-    );
+  try {
+    const tcgDexQuote = await getTcgDexPriceQuote(card);
+
+    if (tcgDexQuote) {
+      return tcgDexQuote;
+    }
+  } catch {
+    return createDemoQuote(card);
+  }
+
+  if (!USE_LIGA_PRICE_API || isPriceFunctionCoolingDown()) {
+    return createDemoQuote(card);
   }
 
   try {
@@ -204,7 +486,7 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
   } catch (error) {
     if (isRecoverablePriceError(error)) {
       rememberUnavailablePriceFunction();
-      return createUnavailableQuote(card, error);
+      return createDemoQuote(card);
     }
 
     throw error;

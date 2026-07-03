@@ -221,6 +221,51 @@ img {
   color: #932828;
 }
 
+.toast-region {
+  position: fixed;
+  z-index: 80;
+  top: 88px;
+  right: 24px;
+  width: min(360px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.app-toast {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  gap: 10px;
+  border: 1px solid #a8d4b6;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  color: var(--green);
+  font-weight: 900;
+  animation: toast-in 180ms ease-out;
+}
+
+.app-toast svg {
+  flex: 0 0 auto;
+}
+
+.app-toast span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .auth-switch {
   margin: 20px 0 0;
   color: var(--muted);
@@ -1531,6 +1576,13 @@ img {
     grid-column: 1 / -1;
     min-width: 0;
     width: 100%;
+  }
+
+  .toast-region {
+    top: auto;
+    right: 10px;
+    bottom: 14px;
+    width: calc(100% - 20px);
   }
 
   .modal-backdrop {

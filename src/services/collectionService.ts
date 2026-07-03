@@ -56,6 +56,15 @@ function writeLocalCards(uid: string, cards: UserCard[]) {
   window.dispatchEvent(new CustomEvent(LOCAL_COLLECTION_EVENT, { detail: uid }));
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function removeUndefinedFields<T>(value: T): T {
   if (Array.isArray(value)) {
     return value
@@ -63,7 +72,7 @@ function removeUndefinedFields<T>(value: T): T {
       .map((item) => removeUndefinedFields(item)) as T;
   }
 
-  if (value && typeof value === 'object') {
+  if (isPlainRecord(value)) {
     return Object.fromEntries(
       Object.entries(value)
         .filter(([, item]) => item !== undefined)
@@ -178,17 +187,19 @@ export async function addUserCard(
   }
 
   if (db && cardRef) {
+    const cardData = removeUndefinedFields({
+      ...card,
+      quantity: currentQuantity + normalizedQuantity,
+      addedAt: serverTimestamp(),
+      collectionCardCount,
+      pokemonProfile:
+        pokemonProfile !== undefined ? pokemonProfile : existingPokemonProfile,
+      priceQuote: priceQuote !== undefined ? priceQuote : existingPriceQuote,
+    });
+
     await setDoc(
       cardRef,
-      {
-        ...removeUndefinedFields(card),
-        quantity: currentQuantity + normalizedQuantity,
-        addedAt: serverTimestamp(),
-        collectionCardCount,
-        pokemonProfile:
-          pokemonProfile !== undefined ? pokemonProfile : existingPokemonProfile,
-        priceQuote: priceQuote !== undefined ? priceQuote : existingPriceQuote,
-      },
+      cardData,
       { merge: true },
     );
     return;

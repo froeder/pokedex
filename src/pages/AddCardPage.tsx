@@ -1,4 +1,11 @@
-import { Check, Info, LoaderCircle, Plus, Search } from 'lucide-react';
+import {
+  Check,
+  CircleCheck,
+  Info,
+  LoaderCircle,
+  Plus,
+  Search,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CardArtwork } from '../components/CardArtwork';
 import { CardDetailsModal } from '../components/CardDetailsModal';
@@ -67,6 +74,21 @@ export function AddCardPage() {
   const [loadingCollections, setLoadingCollections] = useState(true);
   const [loadingCards, setLoadingCards] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setToast(null);
+    }, 3200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
 
   useEffect(() => {
     let ignore = false;
@@ -209,11 +231,18 @@ export function AddCardPage() {
 
     setAddingId(card.id);
     setError('');
-    setCardQuery('');
 
     try {
       const hydratedCard = await hydrateCatalogCard(card);
       await addUserCard(user.uid, hydratedCard, normalizedQuantity);
+      setToast({
+        id: Date.now(),
+        message:
+          normalizedQuantity > 1
+            ? `${normalizedQuantity} cartas de ${hydratedCard.name} adicionadas.`
+            : `${hydratedCard.name} adicionada à coleção.`,
+      });
+      setCardQuery('');
       setOwnedQuantities((currentQuantities) => ({
         ...currentQuantities,
         [card.id]: (currentQuantities[card.id] ?? 0) + normalizedQuantity,
@@ -239,6 +268,15 @@ export function AddCardPage() {
 
   return (
     <div className="page-stack">
+      {toast ? (
+        <div className="toast-region" role="status" aria-live="polite">
+          <div className="app-toast" key={toast.id}>
+            <CircleCheck size={20} aria-hidden="true" />
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      ) : null}
+
       <section className="page-header">
         <div>
           <span className="eyebrow">Catálogo</span>
