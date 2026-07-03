@@ -170,7 +170,7 @@ export async function addUserCard(
   try {
     const mod = await import('./priceService');
     priceQuote =
-      existingPriceQuote && mod.isPriceQuoteFresh(existingPriceQuote)
+      existingPriceQuote && mod.canReusePriceQuote(existingPriceQuote)
         ? existingPriceQuote
         : await mod.getCardPrice(card);
   } catch {

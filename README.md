@@ -62,8 +62,10 @@ VITE_FIREBASE_FUNCTIONS_REGION=southamerica-east1
 - `users/{uid}/cards/{cardId}`: cartas salvas na coleção.
 - `priceCache/{cardId}`: última cotação, variantes de preço e expiração.
 
-O frontend lê `priceCache` primeiro. Se a cotação estiver vencida ou ausente, a
-Cloud Function consulta a Liga Pokémon, atualiza o cache e retorna o valor.
+O frontend lê `priceCache` primeiro. Se a cotação da Liga Pokémon estiver
+vencida ou ausente, a Cloud Function consulta a Liga Pokémon, atualiza o cache
+e retorna o valor. Cotações antigas de fontes alternativas não são reutilizadas
+para preço.
 Ao adicionar uma carta, ou ao abrir os detalhes de uma carta já salva que ainda
 não tenha cotação fresca, o app grava a `priceQuote` também em
 `users/{uid}/cards/{cardId}` para reutilizar o preço salvo antes de chamar a API.

@@ -52,6 +52,17 @@ export function isPriceQuoteFresh(
   return Number.isFinite(expiresAt) && Date.now() < expiresAt;
 }
 
+export function canReusePriceQuote(
+  quote: Pick<PriceQuote, 'expiresAt' | 'fetchedAt' | 'source'>,
+) {
+  const reusableSource =
+    quote.source === 'LigaPokemon' ||
+    quote.source === 'Unavailable' ||
+    quote.source === 'Demo';
+
+  return reusableSource && isPriceQuoteFresh(quote);
+}
+
 function createDemoQuote(card: CatalogCard): PriceQuote {
   const seed = [...card.id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const minimum = Number(((seed % 90) + 4.9).toFixed(2));
@@ -152,7 +163,7 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
 
       if (
         cachedQuote.cacheVersion === PRICE_CACHE_VERSION &&
-        isPriceQuoteFresh(cachedQuote)
+        canReusePriceQuote(cachedQuote)
       ) {
         return {
           ...cachedQuote,

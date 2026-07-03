@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import { hydrateCatalogCard } from '../services/catalogService';
 import { getPokemonProfile } from '../services/pokemonService';
-import { getCardPrice, isPriceQuoteFresh } from '../services/priceService';
+import { canReusePriceQuote, getCardPrice } from '../services/priceService';
 import type { CatalogCard, PokemonProfile, PriceQuote } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 import { formatBRL, formatDateTime } from '../utils/formatters';
@@ -83,7 +83,7 @@ export function CardDetailsModal({
   onUpdateQuantity,
 }: CardDetailsModalProps) {
   const savedQuoteIsFresh =
-    card.priceQuote != null && isPriceQuoteFresh(card.priceQuote);
+    card.priceQuote != null && canReusePriceQuote(card.priceQuote);
   const [detailedCard, setDetailedCard] = useState<CatalogCard>(card);
   const [quantityDraft, setQuantityDraft] = useState({
     cardId: card.id,
