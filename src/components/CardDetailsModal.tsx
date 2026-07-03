@@ -10,7 +10,11 @@ import { formatBRL, formatDateTime } from '../utils/formatters';
 import { CardArtwork } from './CardArtwork';
 
 interface CardDetailsModalProps {
-  card: CatalogCard & { quantity?: number };
+  card: CatalogCard & {
+    quantity?: number;
+    pokemonProfile?: PokemonProfile | null;
+    priceQuote?: PriceQuote | null;
+  };
   quantity?: number;
   onClose: () => void;
   onUpdateQuantity?: (quantity: number) => void;
@@ -79,9 +83,9 @@ export function CardDetailsModal({
   const [detailedCard, setDetailedCard] = useState<CatalogCard>(card);
   const [quantity, setQuantity] = useState(initialQuantity);
   const [pokemonProfile, setPokemonProfile] =
-    useState<PokemonProfile | null>(null);
-  const [quote, setQuote] = useState<PriceQuote | null>(null);
-  const [loading, setLoading] = useState(true);
+    useState<PokemonProfile | null>(card.pokemonProfile ?? null);
+  const [quote, setQuote] = useState<PriceQuote | null>(card.priceQuote ?? null);
+  const [loading, setLoading] = useState(card.priceQuote == null);
   const [updatingQuantity, setUpdatingQuantity] = useState(false);
   const [error, setError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
@@ -121,6 +125,11 @@ export function CardDetailsModal({
   }, [initialQuantity]);
 
   useEffect(() => {
+    if (card.pokemonProfile != null) {
+      setPokemonProfile(card.pokemonProfile);
+      return undefined;
+    }
+
     let ignore = false;
 
     getPokemonProfile(detailedCard)
@@ -134,10 +143,17 @@ export function CardDetailsModal({
     return () => {
       ignore = true;
     };
-  }, [detailedCard]);
+  }, [card.pokemonProfile, detailedCard]);
 
   useEffect(() => {
+    if (card.priceQuote != null && refreshToken === 0) {
+      setQuote(card.priceQuote);
+      setLoading(false);
+      return undefined;
+    }
+
     let ignore = false;
+    setLoading(true);
 
     getCardPrice(detailedCard)
       .then((nextQuote) => {
@@ -159,7 +175,7 @@ export function CardDetailsModal({
     return () => {
       ignore = true;
     };
-  }, [detailedCard, refreshToken]);
+  }, [card.priceQuote, detailedCard, refreshToken]);
 
   async function handleQuantityChange(nextValue: number) {
     const normalizedValue = Math.max(1, Math.floor(nextValue));

@@ -47,6 +47,8 @@ export interface UserCard extends CatalogCard {
   addedAt: string;
   quantity: number;
   collectionCardCount?: number;
+  pokemonProfile?: PokemonProfile | null;
+  priceQuote?: PriceQuote | null;
 }
 
 export interface PriceVariant {

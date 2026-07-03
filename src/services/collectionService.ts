@@ -11,7 +11,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import type { CatalogCard, UserCard } from '../types';
+import type { CatalogCard, PokemonProfile, PriceQuote, UserCard } from '../types';
 
 const LOCAL_COLLECTION_EVENT = 'pokedex:collection-change';
 
@@ -31,6 +31,13 @@ function toUserCard(data: DocumentData): UserCard {
     ...(data as CatalogCard),
     addedAt,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    collectionCardCount:
+      data.collectionCardCount != null
+        ? Number(data.collectionCardCount)
+        : undefined,
+    pokemonProfile:
+      data.pokemonProfile != null ? (data.pokemonProfile as PokemonProfile) : undefined,
+    priceQuote: data.priceQuote != null ? (data.priceQuote as PriceQuote) : undefined,
   };
 }
 
@@ -116,20 +123,44 @@ export async function addUserCard(
 ) {
   const normalizedQuantity = Math.max(1, Math.floor(quantity));
 
+  let collectionCardCount: number | undefined;
+  let pokemonProfile: PokemonProfile | null | undefined;
+  let priceQuote: PriceQuote | null | undefined;
+
+  try {
+    const mod = await import('./catalogService');
+    const collection = await mod.loadCollectionCards(card.collectionId);
+    collectionCardCount = collection?.cardCount;
+  } catch {
+    collectionCardCount = undefined;
+  }
+
+  try {
+    const mod = await import('./pokemonService');
+    pokemonProfile = await mod.getPokemonProfile(card);
+  } catch {
+    pokemonProfile = null;
+  }
+
+  try {
+    const mod = await import('./priceService');
+    priceQuote = await mod.getCardPrice(card);
+  } catch {
+    priceQuote = null;
+  }
+
   if (db) {
     const cardRef = doc(db, 'users', uid, 'cards', card.id);
     const currentCard = await getDoc(cardRef);
     const currentQuantity = currentCard.exists()
       ? Number(currentCard.data().quantity ?? 1)
       : 0;
-    let collectionCardCount: number | undefined;
-    try {
-      const mod = await import('./catalogService');
-      const collection = await mod.loadCollectionCards(card.collectionId);
-      collectionCardCount = collection?.cardCount;
-    } catch {
-      collectionCardCount = undefined;
-    }
+    const existingPokemonProfile = currentCard.exists()
+      ? (currentCard.data().pokemonProfile as PokemonProfile | null | undefined)
+      : undefined;
+    const existingPriceQuote = currentCard.exists()
+      ? (currentCard.data().priceQuote as PriceQuote | null | undefined)
+      : undefined;
 
     await setDoc(
       cardRef,
@@ -138,6 +169,9 @@ export async function addUserCard(
         quantity: currentQuantity + normalizedQuantity,
         addedAt: serverTimestamp(),
         collectionCardCount,
+        pokemonProfile:
+          pokemonProfile !== undefined ? pokemonProfile : existingPokemonProfile,
+        priceQuote: priceQuote !== undefined ? priceQuote : existingPriceQuote,
       },
       { merge: true },
     );
@@ -147,21 +181,19 @@ export async function addUserCard(
   const existingCards = readLocalCards(uid);
   const existingCard = existingCards.find((item) => item.id === card.id);
   const currentQuantity = existingCard?.quantity ?? 0;
-  let collectionCardCountLocal: number | undefined;
-  try {
-    const mod = await import('./catalogService');
-    const collection = await mod.loadCollectionCards(card.collectionId);
-    collectionCardCountLocal = collection?.cardCount;
-  } catch {
-    collectionCardCountLocal = undefined;
-  }
 
   writeLocalCards(uid, [
     {
       ...card,
       quantity: currentQuantity + normalizedQuantity,
       addedAt: new Date().toISOString(),
-      collectionCardCount: collectionCardCountLocal,
+      collectionCardCount,
+      pokemonProfile:
+        pokemonProfile !== undefined
+          ? pokemonProfile
+          : existingCard?.pokemonProfile,
+      priceQuote:
+        priceQuote !== undefined ? priceQuote : existingCard?.priceQuote,
     },
     ...existingCards.filter((item) => item.id !== card.id),
   ]);
