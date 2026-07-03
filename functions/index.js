@@ -6,7 +6,7 @@ const { extractStructuredPriceVariants } = require('./priceParser');
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 5 });
 
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 44 * 60 * 60 * 1000;
 const UNAVAILABLE_CACHE_TTL_MS = 15 * 60 * 1000;
 const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
 const PRICE_CACHE_VERSION = 4;

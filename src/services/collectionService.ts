@@ -8,6 +8,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -126,6 +127,30 @@ export async function addUserCard(
   let collectionCardCount: number | undefined;
   let pokemonProfile: PokemonProfile | null | undefined;
   let priceQuote: PriceQuote | null | undefined;
+  let currentQuantity = 0;
+  let existingPokemonProfile: PokemonProfile | null | undefined;
+  let existingPriceQuote: PriceQuote | null | undefined;
+  let existingCard: UserCard | undefined;
+  const cardRef = db ? doc(db, 'users', uid, 'cards', card.id) : null;
+
+  if (db && cardRef) {
+    const currentCard = await getDoc(cardRef);
+    const currentData = currentCard.data();
+    currentQuantity = currentCard.exists()
+      ? Number(currentData?.quantity ?? 1)
+      : 0;
+    existingPokemonProfile = currentCard.exists()
+      ? (currentData?.pokemonProfile as PokemonProfile | null | undefined)
+      : undefined;
+    existingPriceQuote = currentCard.exists()
+      ? (currentData?.priceQuote as PriceQuote | null | undefined)
+      : undefined;
+  } else {
+    existingCard = readLocalCards(uid).find((item) => item.id === card.id);
+    currentQuantity = existingCard?.quantity ?? 0;
+    existingPokemonProfile = existingCard?.pokemonProfile;
+    existingPriceQuote = existingCard?.priceQuote;
+  }
 
   try {
     const mod = await import('./catalogService');
@@ -144,24 +169,15 @@ export async function addUserCard(
 
   try {
     const mod = await import('./priceService');
-    priceQuote = await mod.getCardPrice(card);
+    priceQuote =
+      existingPriceQuote && mod.isPriceQuoteFresh(existingPriceQuote)
+        ? existingPriceQuote
+        : await mod.getCardPrice(card);
   } catch {
-    priceQuote = null;
+    priceQuote = undefined;
   }
 
-  if (db) {
-    const cardRef = doc(db, 'users', uid, 'cards', card.id);
-    const currentCard = await getDoc(cardRef);
-    const currentQuantity = currentCard.exists()
-      ? Number(currentCard.data().quantity ?? 1)
-      : 0;
-    const existingPokemonProfile = currentCard.exists()
-      ? (currentCard.data().pokemonProfile as PokemonProfile | null | undefined)
-      : undefined;
-    const existingPriceQuote = currentCard.exists()
-      ? (currentCard.data().priceQuote as PriceQuote | null | undefined)
-      : undefined;
-
+  if (db && cardRef) {
     await setDoc(
       cardRef,
       {
@@ -179,8 +195,6 @@ export async function addUserCard(
   }
 
   const existingCards = readLocalCards(uid);
-  const existingCard = existingCards.find((item) => item.id === card.id);
-  const currentQuantity = existingCard?.quantity ?? 0;
 
   writeLocalCards(uid, [
     {
@@ -219,6 +233,35 @@ export async function updateUserCardQuantity(
     card.id === cardId ? { ...card, quantity: normalizedQuantity } : card,
   );
   writeLocalCards(uid, cards);
+}
+
+export async function updateUserCardPriceQuote(
+  uid: string,
+  cardId: string,
+  priceQuote: PriceQuote,
+) {
+  const sanitizedQuote = removeUndefinedFields(priceQuote);
+
+  if (db) {
+    await updateDoc(doc(db, 'users', uid, 'cards', cardId), {
+      priceQuote: sanitizedQuote,
+    });
+    return;
+  }
+
+  const cards = readLocalCards(uid);
+  const hasCard = cards.some((card) => card.id === cardId);
+
+  if (!hasCard) {
+    return;
+  }
+
+  writeLocalCards(
+    uid,
+    cards.map((card) =>
+      card.id === cardId ? { ...card, priceQuote: sanitizedQuote } : card,
+    ),
+  );
 }
 
 export async function removeUserCard(uid: string, cardId: string) {

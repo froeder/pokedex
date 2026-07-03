@@ -1,5 +1,5 @@
 import { LoaderCircle, Plus } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CardDetailsModal } from '../components/CardDetailsModal';
 import { CardGrid } from '../components/CardGrid';
@@ -9,9 +9,10 @@ import { loadCatalogCollections } from '../services/catalogService';
 import {
   removeUserCard,
   subscribeToUserCards,
+  updateUserCardPriceQuote,
   updateUserCardQuantity,
 } from '../services/collectionService';
-import type { TcgCollection, UserCard } from '../types';
+import type { PriceQuote, TcgCollection, UserCard } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 
 function normalizeCollectionKey(value: string) {
@@ -32,7 +33,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [removingId, setRemovingId] = useState<string>();
-  const [activeCollectionId, setActiveCollectionId] = useState('');
+  const [preferredCollectionId, setPreferredCollectionId] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -133,16 +134,11 @@ export function DashboardPage() {
       );
   }, [cards, catalogCollections]);
 
-  useEffect(() => {
-    if (groupedCollections.length === 0) {
-      setActiveCollectionId('');
-      return;
-    }
-
-    if (!groupedCollections.some((group) => group.collectionId === activeCollectionId)) {
-      setActiveCollectionId(groupedCollections[0].collectionId);
-    }
-  }, [activeCollectionId, groupedCollections]);
+  const activeCollectionId = groupedCollections.some(
+    (group) => group.collectionId === preferredCollectionId,
+  )
+    ? preferredCollectionId
+    : groupedCollections[0]?.collectionId ?? '';
 
   const activeCollection = groupedCollections.find(
     (group) => group.collectionId === activeCollectionId,
@@ -183,6 +179,32 @@ export function DashboardPage() {
       setError(getFriendlyFirebaseError(updateError));
     }
   }
+
+  const handlePriceQuoteLoaded = useCallback(
+    async (cardId: string, priceQuote: PriceQuote) => {
+      if (!user) {
+        return;
+      }
+
+      try {
+        await updateUserCardPriceQuote(user.uid, cardId, priceQuote);
+      } catch (priceSaveError) {
+        setError(getFriendlyFirebaseError(priceSaveError));
+      }
+    },
+    [user],
+  );
+  const selectedCardId = selectedCard?.id;
+  const handleSelectedCardPriceQuoteLoaded = useCallback(
+    async (priceQuote: PriceQuote) => {
+      if (!selectedCardId) {
+        return;
+      }
+
+      await handlePriceQuoteLoaded(selectedCardId, priceQuote);
+    },
+    [handlePriceQuoteLoaded, selectedCardId],
+  );
 
   return (
     <div className="page-stack">
@@ -236,7 +258,7 @@ export function DashboardPage() {
                   key={group.collectionId}
                   role="tab"
                   type="button"
-                  onClick={() => setActiveCollectionId(group.collectionId)}
+                  onClick={() => setPreferredCollectionId(group.collectionId)}
                 >
                   <span>{group.name}</span>
                   <small>
@@ -277,6 +299,7 @@ export function DashboardPage() {
           card={selectedCard}
           quantity={selectedCard.quantity ?? 1}
           onClose={() => setSelectedCard(null)}
+          onPriceQuoteLoaded={handleSelectedCardPriceQuoteLoaded}
           onUpdateQuantity={(quantity) => void handleUpdateQuantity(selectedCard.id, quantity)}
         />
       ) : null}

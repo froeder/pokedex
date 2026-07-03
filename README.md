@@ -3,7 +3,7 @@
 Sistema de gestão de portfólio para colecionadores de Pokémon TCG no Brasil.
 O app usa catálogo local em PT-BR, autenticação Firebase, Firestore para a
 coleção do usuário e uma Cloud Function para consultar/cachar preços da Liga
-Pokémon por 24 horas.
+Pokémon por 44 horas.
 
 ## Stack
 
@@ -64,6 +64,9 @@ VITE_FIREBASE_FUNCTIONS_REGION=southamerica-east1
 
 O frontend lê `priceCache` primeiro. Se a cotação estiver vencida ou ausente, a
 Cloud Function consulta a Liga Pokémon, atualiza o cache e retorna o valor.
+Ao adicionar uma carta, ou ao abrir os detalhes de uma carta já salva que ainda
+não tenha cotação fresca, o app grava a `priceQuote` também em
+`users/{uid}/cards/{cardId}` para reutilizar o preço salvo antes de chamar a API.
 
 ## Comandos
 

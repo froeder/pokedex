@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import { hydrateCatalogCard } from '../services/catalogService';
 import { getPokemonProfile } from '../services/pokemonService';
-import { getCardPrice } from '../services/priceService';
+import { getCardPrice, isPriceQuoteFresh } from '../services/priceService';
 import type { CatalogCard, PokemonProfile, PriceQuote } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 import { formatBRL, formatDateTime } from '../utils/formatters';
@@ -17,6 +17,7 @@ interface CardDetailsModalProps {
   };
   quantity?: number;
   onClose: () => void;
+  onPriceQuoteLoaded?: (quote: PriceQuote) => Promise<void> | void;
   onUpdateQuantity?: (quantity: number) => void;
 }
 
@@ -78,17 +79,33 @@ export function CardDetailsModal({
   card,
   quantity: initialQuantity = 1,
   onClose,
+  onPriceQuoteLoaded,
   onUpdateQuantity,
 }: CardDetailsModalProps) {
+  const savedQuoteIsFresh =
+    card.priceQuote != null && isPriceQuoteFresh(card.priceQuote);
   const [detailedCard, setDetailedCard] = useState<CatalogCard>(card);
-  const [quantity, setQuantity] = useState(initialQuantity);
-  const [pokemonProfile, setPokemonProfile] =
-    useState<PokemonProfile | null>(card.pokemonProfile ?? null);
-  const [quote, setQuote] = useState<PriceQuote | null>(card.priceQuote ?? null);
-  const [loading, setLoading] = useState(card.priceQuote == null);
+  const [quantityDraft, setQuantityDraft] = useState({
+    cardId: card.id,
+    value: initialQuantity,
+  });
+  const [loadedPokemonProfile, setLoadedPokemonProfile] = useState<{
+    cardId: string;
+    profile: PokemonProfile | null;
+  } | null>(null);
+  const [quote, setQuote] = useState<PriceQuote | null>(null);
+  const [loading, setLoading] = useState(!savedQuoteIsFresh);
   const [updatingQuantity, setUpdatingQuantity] = useState(false);
   const [error, setError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
+  const quantity =
+    quantityDraft.cardId === card.id ? quantityDraft.value : initialQuantity;
+  const pokemonProfile =
+    card.pokemonProfile ??
+    (loadedPokemonProfile?.cardId === detailedCard.id
+      ? loadedPokemonProfile.profile
+      : null);
+  const visibleQuote = savedQuoteIsFresh && refreshToken === 0 ? card.priceQuote : quote;
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -121,12 +138,7 @@ export function CardDetailsModal({
   }, [card]);
 
   useEffect(() => {
-    setQuantity(initialQuantity);
-  }, [initialQuantity]);
-
-  useEffect(() => {
     if (card.pokemonProfile != null) {
-      setPokemonProfile(card.pokemonProfile);
       return undefined;
     }
 
@@ -135,7 +147,10 @@ export function CardDetailsModal({
     getPokemonProfile(detailedCard)
       .then((profile) => {
         if (!ignore) {
-          setPokemonProfile(profile);
+          setLoadedPokemonProfile({
+            cardId: detailedCard.id,
+            profile,
+          });
         }
       })
       .catch(() => undefined);
@@ -146,21 +161,24 @@ export function CardDetailsModal({
   }, [card.pokemonProfile, detailedCard]);
 
   useEffect(() => {
-    if (card.priceQuote != null && refreshToken === 0) {
-      setQuote(card.priceQuote);
-      setLoading(false);
+    if (savedQuoteIsFresh && refreshToken === 0) {
       return undefined;
     }
 
     let ignore = false;
-    setLoading(true);
 
-    getCardPrice(detailedCard)
-      .then((nextQuote) => {
-        if (!ignore) {
-          setQuote(nextQuote);
-        }
-      })
+    async function loadPriceQuote() {
+      const nextQuote = await getCardPrice(detailedCard);
+
+      if (ignore) {
+        return;
+      }
+
+      setQuote(nextQuote);
+      await onPriceQuoteLoaded?.(nextQuote);
+    }
+
+    loadPriceQuote()
       .catch((priceError: unknown) => {
         if (!ignore) {
           setError(getFriendlyFirebaseError(priceError));
@@ -175,11 +193,14 @@ export function CardDetailsModal({
     return () => {
       ignore = true;
     };
-  }, [card.priceQuote, detailedCard, refreshToken]);
+  }, [detailedCard, onPriceQuoteLoaded, refreshToken, savedQuoteIsFresh]);
 
   async function handleQuantityChange(nextValue: number) {
     const normalizedValue = Math.max(1, Math.floor(nextValue));
-    setQuantity(normalizedValue);
+    setQuantityDraft({
+      cardId: card.id,
+      value: normalizedValue,
+    });
     setUpdatingQuantity(true);
 
     try {
@@ -190,14 +211,14 @@ export function CardDetailsModal({
   }
 
   const primaryPriceLabel = useMemo(() => {
-    if (!quote?.price) {
+    if (!visibleQuote?.price) {
       return 'Cotação indisponível';
     }
 
-    return quote.priceType === 'minimum'
-      ? `${formatBRL(quote.price)} menor preço`
-      : `${formatBRL(quote.price)} preço médio`;
-  }, [quote]);
+    return visibleQuote.priceType === 'minimum'
+      ? `${formatBRL(visibleQuote.price)} menor preço`
+      : `${formatBRL(visibleQuote.price)} preço médio`;
+  }, [visibleQuote]);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -468,20 +489,20 @@ export function CardDetailsModal({
 
             {error ? <div className="inline-error">{error}</div> : null}
 
-            {quote ? (
+            {visibleQuote ? (
               <>
                 <div className="quote-meta">
                   <span>
-                    {quote.cached && quote.source !== 'Unavailable'
-                      ? `${getQuoteSourceLabel(quote.source)} · cache`
-                      : getQuoteSourceLabel(quote.source)}
+                    {visibleQuote.cached && visibleQuote.source !== 'Unavailable'
+                      ? `${getQuoteSourceLabel(visibleQuote.source)} · cache`
+                      : getQuoteSourceLabel(visibleQuote.source)}
                   </span>
-                  <span>{formatDateTime(quote.fetchedAt)}</span>
+                  <span>{formatDateTime(visibleQuote.fetchedAt)}</span>
                 </div>
 
-                {quote.variants.length ? (
+                {visibleQuote.variants.length ? (
                   <div className="price-variant-list">
-                    {quote.variants.map((variant) => (
+                    {visibleQuote.variants.map((variant) => (
                       <article className="price-variant-card" key={variant.label}>
                         <h3>{variant.label}</h3>
                         <dl>
@@ -503,19 +524,19 @@ export function CardDetailsModal({
                   </div>
                 ) : (
                   <div className="quote-empty">
-                    {quote.unavailableReason ??
+                    {visibleQuote.unavailableReason ??
                       'A Liga Pokémon não retornou cotação para esta carta.'}
                   </div>
                 )}
 
-                {quote.url ? (
+                {visibleQuote.url ? (
                   <a
                     className="external-link"
-                    href={quote.url}
+                    href={visibleQuote.url}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {getQuoteExternalLabel(quote.source)}
+                    {getQuoteExternalLabel(visibleQuote.source)}
                     <ExternalLink size={16} aria-hidden="true" />
                   </a>
                 ) : null}
