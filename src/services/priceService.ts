@@ -1,4 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/config';
 import type { CatalogCard, PriceQuote, PriceVariant } from '../types';
@@ -7,7 +7,7 @@ import {
   isPermissionError,
 } from '../utils/firebaseErrors';
 
-const CACHE_TTL_MS = 44 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PRICE_CACHE_VERSION = 4;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
@@ -122,7 +122,9 @@ export function canReusePriceQuote(
   quote: Pick<PriceQuote, 'expiresAt' | 'fetchedAt' | 'source'>,
 ) {
   const reusableSource =
-    quote.source === 'LigaPokemon' || quote.source === 'Demo';
+    quote.source === 'LigaPokemon' ||
+    quote.source === 'TCGdex' ||
+    quote.source === 'Demo';
 
   return reusableSource && isPriceQuoteFresh(quote);
 }
@@ -422,6 +424,27 @@ function rememberUnavailablePriceFunction() {
   );
 }
 
+async function savePriceQuoteToCache(cardId: string, quote: PriceQuote) {
+  if (!db) {
+    return;
+  }
+
+  try {
+    await setDoc(
+      doc(db, 'priceCache', cardId),
+      {
+        ...quote,
+        cached: Boolean(quote.cached),
+        fetchedAt: quote.fetchedAt,
+        expiresAt: quote.expiresAt,
+      },
+      { merge: true },
+    );
+  } catch {
+    // Ignore cache persistence errors and keep the UI usable.
+  }
+}
+
 export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
   if (!db || !functions) {
     try {
@@ -456,6 +479,7 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
     const tcgDexQuote = await getTcgDexPriceQuote(card);
 
     if (tcgDexQuote) {
+      await savePriceQuoteToCache(card.id, tcgDexQuote);
       return tcgDexQuote;
     }
   } catch {
@@ -482,7 +506,12 @@ export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
       },
     });
 
-    return normalizeQuote(response.data as Record<string, unknown>);
+    const normalizedQuote = normalizeQuote(
+      response.data as Record<string, unknown>,
+    );
+    await savePriceQuoteToCache(card.id, normalizedQuote);
+
+    return normalizedQuote;
   } catch (error) {
     if (isRecoverablePriceError(error)) {
       rememberUnavailablePriceFunction();

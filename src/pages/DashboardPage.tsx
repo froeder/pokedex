@@ -109,10 +109,7 @@ export function DashboardPage() {
 
     return Array.from(groups.values())
       .map((group) => {
-        const ownedCount = group.cards.reduce(
-          (total, card) => total + (card.quantity ?? 1),
-          0,
-        );
+        const ownedCount = new Set(group.cards.map((card) => card.id)).size;
         const totalCount =
           group.collection?.cardCount ??
           group.cards.find((c) => c.collectionCardCount != null)?.collectionCardCount;

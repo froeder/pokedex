@@ -6,7 +6,7 @@ import {
   Plus,
   Search,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardArtwork } from '../components/CardArtwork';
 import { CardDetailsModal } from '../components/CardDetailsModal';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
@@ -77,6 +77,7 @@ export function AddCardPage() {
   const [toast, setToast] = useState<{ id: number; message: string } | null>(
     null,
   );
+  const cardSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!toast) {
@@ -243,6 +244,9 @@ export function AddCardPage() {
             : `${hydratedCard.name} adicionada à coleção.`,
       });
       setCardQuery('');
+      window.requestAnimationFrame(() => {
+        cardSearchInputRef.current?.focus();
+      });
       setOwnedQuantities((currentQuantities) => ({
         ...currentQuantities,
         [card.id]: (currentQuantities[card.id] ?? 0) + normalizedQuantity,
@@ -250,6 +254,7 @@ export function AddCardPage() {
     } catch (addError) {
       setError(getFriendlyFirebaseError(addError));
     } finally {
+      cardSearchInputRef.current?.focus();
       setAddingId(undefined);
     }
   }
@@ -355,6 +360,7 @@ export function AddCardPage() {
             <label className="search-field">
               <Search size={18} aria-hidden="true" />
               <input
+                ref={cardSearchInputRef}
                 aria-label="Buscar cartas"
                 disabled={!activeCollection || loadingCards}
                 placeholder="Buscar carta ou número"
