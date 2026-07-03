@@ -1,6 +1,6 @@
 import { Download, Grid2X2, LibraryBig, LogOut, Plus, UserCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 type InstallPromptOutcome = {
@@ -16,6 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function AppShell() {
   const { isDemoMode, logout, user } = useAuth();
+  const navigate = useNavigate();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(
     null,
   );
@@ -84,10 +85,15 @@ export function AppShell() {
               <Download size={18} aria-hidden="true" />
             </button>
           ) : null}
-          <div className="user-chip" onClick={() => navigation.navigate('perfil')}>
+          <button
+            className="user-chip"
+            type="button"
+            onClick={() => navigate('/perfil')}
+            aria-label={`Ir para o perfil de ${user?.displayName || user?.email || 'usuário'}`}
+          >
             <UserCircle size={18} aria-hidden="true" />
             <span>{user?.displayName || user?.email}</span>
-          </div>
+          </button>
           <button
             className="icon-button"
             type="button"
