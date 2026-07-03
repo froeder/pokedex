@@ -84,7 +84,7 @@ export function AppShell() {
               <Download size={18} aria-hidden="true" />
             </button>
           ) : null}
-          <div className="user-chip">
+          <div className="user-chip" onClick={() => navigation.navigate('perfil')}>
             <UserCircle size={18} aria-hidden="true" />
             <span>{user?.displayName || user?.email}</span>
           </div>

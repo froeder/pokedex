@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth';
 import { AddCardPage } from './pages/AddCardPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { RegisterPage } from './pages/RegisterPage';
 
 function ProtectedRoute() {
@@ -38,6 +39,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/adicionar" element={<AddCardPage />} />
+          <Route path="/perfil" element={<ProfilePage />} />
         </Route>
       </Route>
 
