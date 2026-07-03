@@ -741,70 +741,46 @@ img {
   width: 100%;
 }
 
-.collection-sidebar {
+.collection-select-wrapper {
   display: grid;
-  gap: 10px;
-  max-height: calc(100vh - 116px);
-  overflow: auto;
-  padding-right: 4px;
 }
 
-.collection-option {
+.collection-select-shell {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
   align-items: center;
-  width: 100%;
-  min-height: 64px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
+  min-height: 46px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 6px 8px 6px 12px;
   background: #ffffff;
+}
+
+.collection-select {
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
   color: var(--ink);
-  text-align: left;
-  transition:
-    border-color 0.16s ease,
-    box-shadow 0.16s ease,
-    transform 0.16s ease;
+  font: inherit;
+  appearance: none;
 }
 
-.collection-option:hover {
-  border-color: var(--blue);
-  box-shadow: 0 8px 18px rgb(31 35 41 / 8%);
-  transform: translateY(-1px);
+.collection-select:focus {
+  outline: none;
 }
 
-.collection-option img,
-.collection-symbol-placeholder {
-  width: 32px;
-  height: 32px;
-  max-height: 32px;
+.collection-select-symbol {
+  width: 28px;
+  height: 28px;
   object-fit: contain;
 }
 
-.collection-symbol-placeholder {
+.collection-select-placeholder {
   border: 1px dashed var(--line-strong);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f7f2e9;
-}
-
-.collection-option strong,
-.collection-option small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.collection-option small {
-  margin-top: 3px;
-  color: var(--muted);
-}
-
-.collection-option.active {
-  border-color: var(--red);
-  background: #fff7f6;
-  box-shadow: inset 4px 0 0 var(--red);
 }
 
 .catalog-panel {

@@ -252,8 +252,8 @@ export function AddCardPage() {
         <aside className="collection-panel" aria-labelledby="collection-title">
           <div className="collection-panel-header">
             <div>
-              <span className="eyebrow">Coleções</span>
-              <strong id="collection-title">{filteredCollections.length}</strong>
+              <span className="eyebrow">Coleção</span>
+              <strong id="collection-title">{selectedCollection?.shortName || selectedCollection?.name || 'Selecione'}</strong>
             </div>
             <span>{collections.length} no catálogo</span>
           </div>
@@ -269,48 +269,40 @@ export function AddCardPage() {
             />
           </label>
 
-          <div className="collection-sidebar" role="listbox">
-            {loadingCollections ? (
-              <div className="panel-loader compact-loader">
-                Carregando coleções...
-              </div>
-            ) : null}
-
-            {!loadingCollections && filteredCollections.length === 0 ? (
-              <div className="panel-loader compact-loader">
-                Nenhuma coleção encontrada.
-              </div>
-            ) : null}
-
-            {filteredCollections.map((collection) => (
-              <button
-                aria-selected={collection.id === selectedCollectionId}
-                className={`collection-option ${
-                  collection.id === selectedCollectionId ? 'active' : ''
-                }`}
-                key={collection.id}
-                role="option"
-                type="button"
-                onClick={() => handleSelectCollection(collection.id)}
+          <label className="collection-select-wrapper">
+            <span className="sr-only">Selecionar coleção</span>
+            <div className="collection-select-shell">
+              <select
+                className="collection-select"
+                value={selectedCollectionId}
+                onChange={(event) => handleSelectCollection(event.target.value)}
               >
-                {collection.symbolUrl ? (
-                  <img
-                    src={`${collection.symbolUrl}.webp`}
-                    alt=""
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="collection-symbol-placeholder" />
-                )}
-                <span>
-                  <strong>{collection.shortName || collection.name}</strong>
-                  <small>
-                    {collection.serie} · {collection.releaseYear}
-                  </small>
-                </span>
-              </button>
-            ))}
-          </div>
+                {loadingCollections ? (
+                  <option value="">Carregando coleções...</option>
+                ) : null}
+
+                {!loadingCollections && filteredCollections.length === 0 ? (
+                  <option value="">Nenhuma coleção encontrada</option>
+                ) : null}
+
+                {filteredCollections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.shortName || collection.name} · {collection.serie} · {collection.releaseYear}
+                  </option>
+                ))}
+              </select>
+              {selectedCollection?.symbolUrl ? (
+                <img
+                  className="collection-select-symbol"
+                  src={`${selectedCollection.symbolUrl}.webp`}
+                  alt=""
+                  loading="lazy"
+                />
+              ) : (
+                <span className="collection-select-symbol collection-select-placeholder" />
+              )}
+            </div>
+          </label>
         </aside>
 
         <section className="catalog-panel" aria-live="polite">
