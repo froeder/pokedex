@@ -1,15 +1,15 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/config';
 import type { CatalogCard, PriceQuote, PriceVariant } from '../types';
-import {
-  getFirebaseErrorCode,
-  isPermissionError,
-} from '../utils/firebaseErrors';
+import { getFirebaseErrorCode } from '../utils/firebaseErrors';
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 1 * 24 * 60 * 60 * 1000;
 const PRICE_CACHE_VERSION = 4;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
+const PRICE_REQUEST_TIMEOUT_MS = 5000;
+const PRICE_CACHE_READ_TIMEOUT_MS = 2500;
+const PRICE_LOOKUP_TIMEOUT_MS = 7000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
 const USE_LIGA_PRICE_API = false;
 const TCGDEX_API_URL = 'https://api.tcgdex.net/v2';
@@ -29,6 +29,10 @@ type ExchangeRateCacheEntry = {
 
 type FrankfurterRateResponse = {
   rate?: number;
+};
+
+type GetCardPriceOptions = {
+  forceRefresh?: boolean;
 };
 
 type TcgDexCardmarketPricing = {
@@ -73,6 +77,26 @@ type TcgDexCardDetail = {
 
 const exchangeRateCache = new Map<ExchangeCurrency, ExchangeRateCacheEntry>();
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timeoutId: number | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  });
+}
+
 function toIsoDate(value: unknown): string {
   if (typeof value === 'string') {
     return value;
@@ -99,7 +123,24 @@ function normalizeQuote(rawQuote: Record<string, unknown>): PriceQuote {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, PRICE_REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Tempo esgotado ao consultar preços.');
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error(`Não foi possível carregar ${url}.`);
@@ -212,10 +253,13 @@ function getTcgDexCardUrl(card: CatalogCard, language: string) {
   )}/${encodeURIComponent(card.number)}`;
 }
 
-async function getExchangeRate(currency: ExchangeCurrency) {
+async function getExchangeRate(
+  currency: ExchangeCurrency,
+  options: GetCardPriceOptions = {},
+) {
   const cachedRate = exchangeRateCache.get(currency);
 
-  if (cachedRate && Date.now() < cachedRate.expiresAt) {
+  if (!options.forceRefresh && cachedRate && Date.now() < cachedRate.expiresAt) {
     return cachedRate.rate;
   }
 
@@ -238,34 +282,39 @@ async function getExchangeRate(currency: ExchangeCurrency) {
 async function fetchTcgDexCard(card: CatalogCard) {
   const preferredLanguage = card.imageUrl.includes('/pt/') ? 'pt' : 'en';
   const languages = [...new Set([preferredLanguage, 'en'])];
-  let lastError: unknown;
-
-  for (const language of languages) {
+  const requests = languages.map(async (language) => {
     const url = getTcgDexCardUrl(card, language);
+    const detail = await fetchJson<TcgDexCardDetail>(url);
 
-    try {
-      return {
-        detail: await fetchJson<TcgDexCardDetail>(url),
-        url,
-      };
-    } catch (error) {
-      lastError = error;
-    }
+    return {
+      detail,
+      url,
+    };
+  });
+
+  try {
+    return await Promise.any(requests);
+  } catch (error) {
+    const lastError =
+      error instanceof AggregateError && error.errors.length
+        ? error.errors[error.errors.length - 1]
+        : error;
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Não foi possível consultar a TCGdex.');
   }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Não foi possível consultar a TCGdex.');
 }
 
 async function getCardmarketVariants(
   pricing: TcgDexCardmarketPricing | undefined,
+  options: GetCardPriceOptions = {},
 ) {
   if (!pricing) {
     return [];
   }
 
-  const rate = await getExchangeRate('EUR');
+  const rate = await getExchangeRate('EUR', options);
   const variants: PriceVariant[] = [
     {
       label: 'Cardmarket',
@@ -309,12 +358,13 @@ function getTcgPlayerVariantLabel(key: string) {
 
 async function getTcgPlayerVariants(
   pricing: TcgDexTcgPlayerPricing | undefined,
+  options: GetCardPriceOptions = {},
 ) {
   if (!pricing) {
     return [];
   }
 
-  const rate = await getExchangeRate('USD');
+  const rate = await getExchangeRate('USD', options);
   const variants: PriceVariant[] = [];
 
   for (const [key, value] of Object.entries(pricing)) {
@@ -333,19 +383,9 @@ async function getTcgPlayerVariants(
   return variants.filter(hasQuotedValue);
 }
 
-function getLatestIsoDate(...values: Array<string | undefined>) {
-  const latest = values
-    .map((value) => (value ? new Date(value).getTime() : Number.NaN))
-    .filter(Number.isFinite)
-    .sort((first, second) => second - first)[0];
-
-  return typeof latest === 'number'
-    ? new Date(latest).toISOString()
-    : new Date().toISOString();
-}
-
 async function getTcgDexPriceQuote(
   card: CatalogCard,
+  options: GetCardPriceOptions = {},
 ): Promise<PriceQuote | null> {
   const { detail, url } = await fetchTcgDexCard(card);
   const pricing = detail.pricing;
@@ -355,8 +395,8 @@ async function getTcgDexPriceQuote(
   }
 
   const [cardmarketResult, tcgplayerResult] = await Promise.allSettled([
-    getCardmarketVariants(pricing.cardmarket),
-    getTcgPlayerVariants(pricing.tcgplayer),
+    getCardmarketVariants(pricing.cardmarket, options),
+    getTcgPlayerVariants(pricing.tcgplayer, options),
   ]);
   const variants = [
     ...(cardmarketResult.status === 'fulfilled' ? cardmarketResult.value : []),
@@ -368,10 +408,7 @@ async function getTcgDexPriceQuote(
   }
 
   const primaryPrice = pickPrimaryPrice(variants);
-  const fetchedAt = getLatestIsoDate(
-    pricing.cardmarket?.updated,
-    pricing.tcgplayer?.updated,
-  );
+  const fetchedAt = new Date().toISOString();
 
   return {
     cardId: card.id,
@@ -424,100 +461,114 @@ function rememberUnavailablePriceFunction() {
   );
 }
 
-async function savePriceQuoteToCache(cardId: string, quote: PriceQuote) {
+async function getCachedPriceQuote(cardId: string) {
   if (!db) {
-    return;
+    return null;
   }
 
   try {
-    await setDoc(
-      doc(db, 'priceCache', cardId),
-      {
-        ...quote,
-        cached: Boolean(quote.cached),
-        fetchedAt: quote.fetchedAt,
-        expiresAt: quote.expiresAt,
-      },
-      { merge: true },
+    const cacheSnapshot = await withTimeout(
+      getDoc(doc(db, 'priceCache', cardId)),
+      PRICE_CACHE_READ_TIMEOUT_MS,
+      'Tempo esgotado ao ler cache de preços.',
     );
+
+    if (!cacheSnapshot.exists()) {
+      return null;
+    }
+
+    const cachedQuote = normalizeQuote(cacheSnapshot.data());
+
+    if (
+      cachedQuote.cacheVersion !== PRICE_CACHE_VERSION ||
+      !canReusePriceQuote(cachedQuote)
+    ) {
+      return null;
+    }
+
+    return {
+      ...cachedQuote,
+      cached: true,
+    };
   } catch {
-    // Ignore cache persistence errors and keep the UI usable.
+    return null;
   }
 }
 
-export async function getCardPrice(card: CatalogCard): Promise<PriceQuote> {
-  if (!db || !functions) {
-    try {
-      return (await getTcgDexPriceQuote(card)) ?? createDemoQuote(card);
-    } catch {
-      return createDemoQuote(card);
-    }
-  }
-
-  try {
-    const cacheSnapshot = await getDoc(doc(db, 'priceCache', card.id));
-    if (cacheSnapshot.exists()) {
-      const cachedQuote = normalizeQuote(cacheSnapshot.data());
-
-      if (
-        cachedQuote.cacheVersion === PRICE_CACHE_VERSION &&
-        canReusePriceQuote(cachedQuote)
-      ) {
-        return {
-          ...cachedQuote,
-          cached: true,
-        };
-      }
-    }
-  } catch (error) {
-    if (!isPermissionError(error)) {
-      throw error;
-    }
-  }
-
-  try {
-    const tcgDexQuote = await getTcgDexPriceQuote(card);
-
-    if (tcgDexQuote) {
-      await savePriceQuoteToCache(card.id, tcgDexQuote);
-      return tcgDexQuote;
-    }
-  } catch {
-    return createDemoQuote(card);
-  }
-
-  if (!USE_LIGA_PRICE_API || isPriceFunctionCoolingDown()) {
-    return createDemoQuote(card);
+async function getLigaPokemonPriceQuote(card: CatalogCard) {
+  if (!functions || !USE_LIGA_PRICE_API || isPriceFunctionCoolingDown()) {
+    return null;
   }
 
   try {
     const getMarketPrice = httpsCallable(functions, 'getCardMarketPrice');
-    const response = await getMarketPrice({
-      card: {
-        id: card.id,
-        name: card.name,
-        searchName: card.searchName,
-        collectionId: card.collectionId,
-        collectionName: card.collectionName,
-        ligaSetCode: card.ligaSetCode,
-        number: card.number,
-        printedTotal: card.printedTotal,
-        tcgdexSetId: card.tcgdexSetId,
-      },
-    });
-
-    const normalizedQuote = normalizeQuote(
-      response.data as Record<string, unknown>,
+    const response = await withTimeout(
+      getMarketPrice({
+        card: {
+          id: card.id,
+          name: card.name,
+          searchName: card.searchName,
+          collectionId: card.collectionId,
+          collectionName: card.collectionName,
+          ligaSetCode: card.ligaSetCode,
+          number: card.number,
+          printedTotal: card.printedTotal,
+          tcgdexSetId: card.tcgdexSetId,
+        },
+      }),
+      PRICE_REQUEST_TIMEOUT_MS,
+      'Tempo esgotado ao consultar a Liga Pokémon.',
     );
-    await savePriceQuoteToCache(card.id, normalizedQuote);
 
-    return normalizedQuote;
+    return normalizeQuote(response.data as Record<string, unknown>);
   } catch (error) {
     if (isRecoverablePriceError(error)) {
       rememberUnavailablePriceFunction();
-      return createDemoQuote(card);
+      return null;
     }
 
     throw error;
+  }
+}
+
+async function getFreshPriceQuote(
+  card: CatalogCard,
+  options: GetCardPriceOptions = {},
+): Promise<PriceQuote> {
+  try {
+    const tcgDexQuote = await getTcgDexPriceQuote(card, options);
+
+    if (tcgDexQuote) {
+      return tcgDexQuote;
+    }
+  } catch {
+    // Continue to the next source before falling back to the local estimate.
+  }
+
+  const ligaPokemonQuote = await getLigaPokemonPriceQuote(card);
+
+  return ligaPokemonQuote ?? createDemoQuote(card);
+}
+
+export async function getCardPrice(
+  card: CatalogCard,
+  options: GetCardPriceOptions = {},
+): Promise<PriceQuote> {
+  if (!options.forceRefresh) {
+    const cachedQuote = await getCachedPriceQuote(card.id);
+
+    if (cachedQuote) {
+      return cachedQuote;
+    }
+  }
+
+  try {
+    return await withTimeout(
+      getFreshPriceQuote(card, options),
+      PRICE_LOOKUP_TIMEOUT_MS,
+      'Tempo esgotado ao consultar cotação.',
+    );
+  } catch {
+    return createDemoQuote(card);
   }
 }

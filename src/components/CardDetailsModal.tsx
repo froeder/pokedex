@@ -1,6 +1,13 @@
 import { getColorSync } from 'colorthief';
 import { ExternalLink, LoaderCircle, RefreshCcw, X } from 'lucide-react';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import { hydrateCatalogCard } from '../services/catalogService';
 import { getPokemonProfile } from '../services/pokemonService';
@@ -106,6 +113,15 @@ function createThemePalette(dominantColor: string) {
   };
 }
 
+const DEFAULT_THEME_PALETTE = {
+  accent: '#c43d3d',
+  soft: '#fae9e7',
+  surface: '#fdf4ef',
+  border: '#f0b7ab',
+  text: '#111827',
+};
+const PRICE_LOADING_TIMEOUT_MS = 12000;
+
 function formatTrait(profile: PokemonProfile) {
   if (profile.isMythical) {
     return 'Mítico';
@@ -144,14 +160,10 @@ export function CardDetailsModal({
   const [loading, setLoading] = useState(!savedQuoteIsFresh);
   const [updatingQuantity, setUpdatingQuantity] = useState(false);
   const [error, setError] = useState('');
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [themePalette, setThemePalette] = useState({
-    accent: '#c43d3d',
-    soft: '#fae9e7',
-    surface: '#fdf4ef',
-    border: '#f0b7ab',
-    text: '#111827',
-  });
+  const mountedRef = useRef(true);
+  const detailedCardRef = useRef<CatalogCard>(card);
+  const priceRequestRef = useRef(0);
+  const [themePalette, setThemePalette] = useState(DEFAULT_THEME_PALETTE);
   const quantity =
     quantityDraft.cardId === card.id ? quantityDraft.value : initialQuantity;
   const pokemonProfile =
@@ -159,7 +171,33 @@ export function CardDetailsModal({
     (loadedPokemonProfile?.cardId === detailedCard.id
       ? loadedPokemonProfile.profile
       : null);
-  const visibleQuote = savedQuoteIsFresh && refreshToken === 0 ? card.priceQuote : quote;
+  const visibleQuote = quote ?? (savedQuoteIsFresh ? card.priceQuote : null);
+
+  const persistLoadedPriceQuote = useCallback(
+    (nextQuote: PriceQuote, shouldIgnore?: () => boolean) => {
+      void (async () => {
+        await onPriceQuoteLoaded?.(nextQuote);
+      })().catch((saveError) => {
+        if (!mountedRef.current || shouldIgnore?.()) {
+          return;
+        }
+
+        setError(getFriendlyFirebaseError(saveError));
+      });
+    },
+    [onPriceQuoteLoaded],
+  );
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      priceRequestRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    detailedCardRef.current = detailedCard;
+  }, [detailedCard]);
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -195,14 +233,14 @@ export function CardDetailsModal({
     let ignore = false;
 
     if (!detailedCard.imageUrl) {
-      setThemePalette({
-        accent: '#c43d3d',
-        soft: '#fae9e7',
-        surface: '#fdf4ef',
-        border: '#f0b7ab',
-        text: '#111827',
+      queueMicrotask(() => {
+        if (!ignore) {
+          setThemePalette(DEFAULT_THEME_PALETTE);
+        }
       });
-      return undefined;
+      return () => {
+        ignore = true;
+      };
     }
 
     const artworkUrl = `${detailedCard.imageUrl}/high.webp`;
@@ -221,26 +259,14 @@ export function CardDetailsModal({
         }
       } catch {
         if (!ignore) {
-          setThemePalette({
-            accent: '#c43d3d',
-            soft: '#fae9e7',
-            surface: '#fdf4ef',
-            border: '#f0b7ab',
-            text: '#111827',
-          });
+          setThemePalette(DEFAULT_THEME_PALETTE);
         }
       }
     };
 
     artworkImage.onerror = () => {
       if (!ignore) {
-        setThemePalette({
-          accent: '#c43d3d',
-          soft: '#fae9e7',
-          surface: '#fdf4ef',
-          border: '#f0b7ab',
-          text: '#111827',
-        });
+        setThemePalette(DEFAULT_THEME_PALETTE);
       }
     };
 
@@ -274,40 +300,73 @@ export function CardDetailsModal({
     };
   }, [card.pokemonProfile, detailedCard]);
 
+  const loadPriceQuote = useCallback(async (forceRefresh = false) => {
+    const requestId = priceRequestRef.current + 1;
+    priceRequestRef.current = requestId;
+    setLoading(true);
+    setError('');
+    const loadingTimeoutId = window.setTimeout(() => {
+      if (mountedRef.current && priceRequestRef.current === requestId) {
+        priceRequestRef.current += 1;
+        setLoading(false);
+        setError('Tempo esgotado ao consultar cotação.');
+      }
+    }, PRICE_LOADING_TIMEOUT_MS);
+
+    try {
+      const nextQuote = await getCardPrice(detailedCardRef.current, {
+        forceRefresh,
+      });
+
+      if (!mountedRef.current || priceRequestRef.current !== requestId) {
+        return;
+      }
+
+      setQuote(nextQuote);
+      persistLoadedPriceQuote(nextQuote);
+    } catch (priceError) {
+      if (mountedRef.current && priceRequestRef.current === requestId) {
+        setError(getFriendlyFirebaseError(priceError));
+      }
+    } finally {
+      if (mountedRef.current && priceRequestRef.current === requestId) {
+        setLoading(false);
+      }
+      window.clearTimeout(loadingTimeoutId);
+    }
+  }, [persistLoadedPriceQuote]);
+
   useEffect(() => {
-    if (savedQuoteIsFresh && refreshToken === 0) {
+    if (savedQuoteIsFresh) {
+      const requestId = priceRequestRef.current + 1;
+      priceRequestRef.current = requestId;
+
+      queueMicrotask(() => {
+        if (mountedRef.current && priceRequestRef.current === requestId) {
+          setQuote(null);
+          setLoading(false);
+        }
+      });
+
       return undefined;
     }
 
     let ignore = false;
 
-    async function loadPriceQuote() {
-      const nextQuote = await getCardPrice(detailedCard);
-
-      if (ignore) {
-        return;
+    queueMicrotask(() => {
+      if (!ignore) {
+        void loadPriceQuote(false);
       }
-
-      setQuote(nextQuote);
-      await onPriceQuoteLoaded?.(nextQuote);
-    }
-
-    loadPriceQuote()
-      .catch((priceError: unknown) => {
-        if (!ignore) {
-          setError(getFriendlyFirebaseError(priceError));
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setLoading(false);
-        }
-      });
+    });
 
     return () => {
       ignore = true;
     };
-  }, [detailedCard, onPriceQuoteLoaded, refreshToken, savedQuoteIsFresh]);
+  }, [card.id, loadPriceQuote, savedQuoteIsFresh]);
+
+  function handleRefreshPriceQuote() {
+    void loadPriceQuote(true);
+  }
 
   async function handleQuantityChange(nextValue: number) {
     const normalizedValue = Math.max(1, Math.floor(nextValue));
@@ -601,11 +660,7 @@ export function CardDetailsModal({
                 className="icon-button"
                 type="button"
                 disabled={loading}
-                onClick={() => {
-                  setLoading(true);
-                  setError('');
-                  setRefreshToken((current) => current + 1);
-                }}
+                onClick={() => void handleRefreshPriceQuote()}
                 title="Atualizar cotação"
                 aria-label="Atualizar cotação"
               >

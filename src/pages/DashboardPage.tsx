@@ -185,6 +185,16 @@ export function DashboardPage() {
 
       try {
         await updateUserCardPriceQuote(user.uid, cardId, priceQuote);
+        setCards((currentCards) =>
+          currentCards.map((card) =>
+            card.id === cardId ? { ...card, priceQuote } : card,
+          ),
+        );
+        setSelectedCard((currentCard) =>
+          currentCard?.id === cardId
+            ? { ...currentCard, priceQuote }
+            : currentCard,
+        );
       } catch (priceSaveError) {
         setError(getFriendlyFirebaseError(priceSaveError));
       }
