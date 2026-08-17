@@ -5,13 +5,14 @@ import type { CatalogCard, PriceQuote, PriceVariant } from '../types';
 import { getFirebaseErrorCode } from '../utils/firebaseErrors';
 
 const CACHE_TTL_MS = 1 * 24 * 60 * 60 * 1000;
-const PRICE_CACHE_VERSION = 4;
+const PRICE_CACHE_VERSION = 5;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
-const PRICE_REQUEST_TIMEOUT_MS = 5000;
+const PRICE_REQUEST_TIMEOUT_MS = 10000;
 const PRICE_CACHE_READ_TIMEOUT_MS = 2500;
-const PRICE_LOOKUP_TIMEOUT_MS = 7000;
+const PRICE_FUNCTION_TIMEOUT_MS = 25000;
+const PRICE_LOOKUP_TIMEOUT_MS = 28000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
-const USE_LIGA_PRICE_API = false;
+const USE_LIGA_PRICE_API = true;
 const TCGDEX_API_URL = 'https://api.tcgdex.net/v2';
 const FRANKFURTER_API_URL = 'https://api.frankfurter.dev/v2';
 
@@ -160,14 +161,17 @@ export function isPriceQuoteFresh(
 }
 
 export function canReusePriceQuote(
-  quote: Pick<PriceQuote, 'expiresAt' | 'fetchedAt' | 'source'>,
+  quote: Pick<
+    PriceQuote,
+    'expiresAt' | 'fetchedAt' | 'source'
+  > & { cacheVersion?: number },
 ) {
   const reusableSource =
     quote.source === 'LigaPokemon' ||
-    quote.source === 'TCGdex' ||
-    quote.source === 'Demo';
+    quote.source === 'TCGdex';
+  const reusableVersion = quote.cacheVersion === PRICE_CACHE_VERSION;
 
-  return reusableSource && isPriceQuoteFresh(quote);
+  return reusableSource && reusableVersion && isPriceQuoteFresh(quote);
 }
 
 function createDemoQuote(card: CatalogCard): PriceQuote {
@@ -446,7 +450,11 @@ function isRecoverablePriceError(error: unknown) {
   return /HTTP\s*(403|429|5\d\d)|Liga Pokémon|cotação/i.test(message);
 }
 
-function isPriceFunctionCoolingDown() {
+function isPriceFunctionCoolingDown(options: GetCardPriceOptions = {}) {
+  if (options.forceRefresh) {
+    return false;
+  }
+
   const unavailableUntil = Number(
     window.sessionStorage.getItem(FUNCTION_UNAVAILABLE_KEY),
   );
@@ -459,6 +467,10 @@ function rememberUnavailablePriceFunction() {
     FUNCTION_UNAVAILABLE_KEY,
     String(Date.now() + UNAVAILABLE_TTL_MS),
   );
+}
+
+function forgetUnavailablePriceFunction() {
+  window.sessionStorage.removeItem(FUNCTION_UNAVAILABLE_KEY);
 }
 
 async function getCachedPriceQuote(cardId: string) {
@@ -495,15 +507,23 @@ async function getCachedPriceQuote(cardId: string) {
   }
 }
 
-async function getLigaPokemonPriceQuote(card: CatalogCard) {
-  if (!functions || !USE_LIGA_PRICE_API || isPriceFunctionCoolingDown()) {
+async function getLigaPokemonPriceQuote(
+  card: CatalogCard,
+  options: GetCardPriceOptions = {},
+) {
+  if (!functions || !USE_LIGA_PRICE_API || isPriceFunctionCoolingDown(options)) {
     return null;
   }
 
   try {
+    if (options.forceRefresh) {
+      forgetUnavailablePriceFunction();
+    }
+
     const getMarketPrice = httpsCallable(functions, 'getCardMarketPrice');
     const response = await withTimeout(
       getMarketPrice({
+        forceRefresh: Boolean(options.forceRefresh),
         card: {
           id: card.id,
           name: card.name,
@@ -516,7 +536,7 @@ async function getLigaPokemonPriceQuote(card: CatalogCard) {
           tcgdexSetId: card.tcgdexSetId,
         },
       }),
-      PRICE_REQUEST_TIMEOUT_MS,
+      PRICE_FUNCTION_TIMEOUT_MS,
       'Tempo esgotado ao consultar a Liga Pokémon.',
     );
 
@@ -535,6 +555,16 @@ async function getFreshPriceQuote(
   card: CatalogCard,
   options: GetCardPriceOptions = {},
 ): Promise<PriceQuote> {
+  const ligaPokemonQuote = await getLigaPokemonPriceQuote(card, options);
+
+  if (
+    ligaPokemonQuote &&
+    ligaPokemonQuote.source === 'LigaPokemon' &&
+    ligaPokemonQuote.variants.length
+  ) {
+    return ligaPokemonQuote;
+  }
+
   try {
     const tcgDexQuote = await getTcgDexPriceQuote(card, options);
 
@@ -544,8 +574,6 @@ async function getFreshPriceQuote(
   } catch {
     // Continue to the next source before falling back to the local estimate.
   }
-
-  const ligaPokemonQuote = await getLigaPokemonPriceQuote(card);
 
   return ligaPokemonQuote ?? createDemoQuote(card);
 }

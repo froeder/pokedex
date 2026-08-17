@@ -8,7 +8,7 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 5 });
 
 const CACHE_TTL_MS = 44 * 60 * 60 * 1000;
 const UNAVAILABLE_CACHE_TTL_MS = 15 * 60 * 1000;
-const PRICE_CACHE_VERSION = 4;
+const PRICE_CACHE_VERSION = 5;
 
 function ensureString(value, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback;
@@ -212,7 +212,9 @@ exports.getCardMarketPrice = onCall(
     const cachedSnapshot = await cacheRef.get();
     const now = Date.now();
 
-    if (cachedSnapshot.exists) {
+    const forceRefresh = request.data?.forceRefresh === true;
+
+    if (!forceRefresh && cachedSnapshot.exists) {
       const cachedQuote = cachedSnapshot.data();
 
       if (isReusableCachedQuote(cachedQuote, now)) {

@@ -120,7 +120,7 @@ const DEFAULT_THEME_PALETTE = {
   border: '#f0b7ab',
   text: '#111827',
 };
-const PRICE_LOADING_TIMEOUT_MS = 12000;
+const PRICE_LOADING_TIMEOUT_MS = 32000;
 
 function formatTrait(profile: PokemonProfile) {
   if (profile.isMythical) {
