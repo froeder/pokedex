@@ -8,7 +8,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -254,9 +253,11 @@ export async function updateUserCardPriceQuote(
   const sanitizedQuote = removeUndefinedFields(priceQuote);
 
   if (db) {
-    await updateDoc(doc(db, 'users', uid, 'cards', cardId), {
-      priceQuote: sanitizedQuote,
-    });
+    await setDoc(
+      doc(db, 'users', uid, 'cards', cardId),
+      { priceQuote: sanitizedQuote },
+      { merge: true },
+    );
     return;
   }
 

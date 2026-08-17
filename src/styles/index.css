@@ -585,6 +585,33 @@ img {
   font-weight: 900;
 }
 
+.owned-card-price {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfaf7;
+}
+
+.owned-card-price div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.owned-card-price span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.owned-card-price strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
 .card-footer-row {
   justify-content: space-between;
   gap: 10px;
@@ -997,6 +1024,39 @@ img {
 
 .dashboard-export-actions .secondary-action {
   min-height: 38px;
+}
+
+.collection-value-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.collection-value-summary div {
+  min-width: 0;
+}
+
+.collection-value-summary span,
+.collection-value-summary p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.collection-value-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 1.18rem;
+}
+
+.collection-value-summary p {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .catalog-card-open > img {

@@ -1,6 +1,8 @@
 import { Trash2 } from 'lucide-react';
 import { getTypeClass, getTypeLabel } from '../data/catalog';
 import type { UserCard } from '../types';
+import { formatBRL } from '../utils/formatters';
+import { getCardTotalPrice, getCardUnitPrice } from '../utils/pricing';
 import { CardArtwork } from './CardArtwork';
 
 interface CardGridProps {
@@ -18,56 +20,75 @@ export function CardGrid({
 }: CardGridProps) {
   return (
     <div className="card-grid">
-      {cards.map((card) => (
-        <article className="owned-card" key={card.id}>
-          <button
-            className="card-open-button"
-            type="button"
-            onClick={() => onSelect(card)}
-          >
-            <CardArtwork card={card} />
-            <span className="card-number">
-              {card.number}/{card.printedTotal}
-            </span>
-          </button>
+      {cards.map((card) => {
+        const unitPrice = getCardUnitPrice(card);
+        const totalPrice = getCardTotalPrice(card);
+        const quantity = card.quantity ?? 1;
 
-          <div className="owned-card-body">
-            <div>
-              <h3>{card.name}</h3>
-              <div className="owned-card-meta">
-                <p>{card.collectionName}</p>
-                <span className="quantity-pill">x{card.quantity ?? 1}</span>
+        return (
+          <article className="owned-card" key={card.id}>
+            <button
+              className="card-open-button"
+              type="button"
+              onClick={() => onSelect(card)}
+            >
+              <CardArtwork card={card} />
+              <span className="card-number">
+                {card.number}/{card.printedTotal}
+              </span>
+            </button>
+
+            <div className="owned-card-body">
+              <div>
+                <h3>{card.name}</h3>
+                <div className="owned-card-meta">
+                  <p>{card.collectionName}</p>
+                  <span className="quantity-pill">x{quantity}</span>
+                </div>
               </div>
-            </div>
 
-            <div className="card-footer-row">
-              <div className="type-list" aria-label="Tipo">
-                {card.types.map((type) => (
-                  <span
-                    className={`type-pill type-${getTypeClass(type)}`}
-                    key={type}
+              <div className="owned-card-price">
+                <div>
+                  <span>Unitário</span>
+                  <strong>{formatBRL(unitPrice)}</strong>
+                </div>
+                {quantity > 1 ? (
+                  <div>
+                    <span>Total x{quantity}</span>
+                    <strong>{formatBRL(totalPrice)}</strong>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="card-footer-row">
+                <div className="type-list" aria-label="Tipo">
+                  {card.types.map((type) => (
+                    <span
+                      className={`type-pill type-${getTypeClass(type)}`}
+                      key={type}
+                    >
+                      {getTypeLabel(type)}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="owned-card-actions">
+                  <button
+                    className="icon-button subtle-danger"
+                    type="button"
+                    disabled={removingId === card.id}
+                    onClick={() => onRemove(card.id)}
+                    title="Remover"
+                    aria-label={`Remover ${card.name}`}
                   >
-                    {getTypeLabel(type)}
-                  </span>
-                ))}
-              </div>
-
-              <div className="owned-card-actions">
-                <button
-                  className="icon-button subtle-danger"
-                  type="button"
-                  disabled={removingId === card.id}
-                  onClick={() => onRemove(card.id)}
-                  title="Remover"
-                  aria-label={`Remover ${card.name}`}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </article>
-      ))}
+          </article>
+        );
+      })}
     </div>
   );
 }

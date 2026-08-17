@@ -17,6 +17,8 @@ import {
 } from '../services/collectionService';
 import type { CatalogCard, PriceQuote, TcgCollection, UserCard } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
+import { formatBRL } from '../utils/formatters';
+import { getCollectionPriceSummary } from '../utils/pricing';
 
 function normalizeCollectionKey(value: string) {
   return value
@@ -493,6 +495,10 @@ export function DashboardPage() {
 
   const activeCollectionName =
     activeCatalogCollection?.name ?? activeCollection?.name ?? 'Coleção';
+  const activeCollectionPriceSummary = useMemo(
+    () => getCollectionPriceSummary(activeCollection?.cards ?? []),
+    [activeCollection],
+  );
 
   function handleExportOwnedCards() {
     downloadCardsCsv(
@@ -721,6 +727,29 @@ export function DashboardPage() {
             onRemove={(cardId) => void handleRemove(cardId)}
             onSelect={setSelectedCard}
           />
+
+          <section
+            className="collection-value-summary"
+            aria-label="Valor total da coleção"
+          >
+            <div>
+              <span>Total sem repetidas</span>
+              <strong>
+                {formatBRL(activeCollectionPriceSummary.totalUnique)}
+              </strong>
+            </div>
+            <div>
+              <span>Total contando repetidas</span>
+              <strong>
+                {formatBRL(activeCollectionPriceSummary.totalWithCopies)}
+              </strong>
+            </div>
+            <p>
+              {activeCollectionPriceSummary.unquotedCardCount > 0
+                ? `${activeCollectionPriceSummary.unquotedCardCount} carta(s) sem cotação salva`
+                : 'Todas as cartas desta coleção têm cotação salva'}
+            </p>
+          </section>
         </>
       ) : null}
 
