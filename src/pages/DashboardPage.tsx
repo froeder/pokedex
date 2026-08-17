@@ -15,10 +15,18 @@ import {
   updateUserCardPriceQuote,
   updateUserCardQuantity,
 } from '../services/collectionService';
+import { getCardPrice } from '../services/priceService';
 import type { CatalogCard, PriceQuote, TcgCollection, UserCard } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 import { formatBRL } from '../utils/formatters';
-import { getCollectionPriceSummary } from '../utils/pricing';
+import { getCollectionPriceSummary, getQuoteUnitPrice } from '../utils/pricing';
+
+type VisualExportCard = Pick<
+  CatalogCard,
+  'collectionName' | 'imageUrl' | 'name' | 'number' | 'printedTotal'
+> & {
+  unitPrice?: number;
+};
 
 function normalizeCollectionKey(value: string) {
   return value
@@ -84,6 +92,28 @@ function sortCardsForExport<T extends Pick<CatalogCard, 'name' | 'number'>>(
   );
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const results: R[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    }),
+  );
+
+  return results;
+}
+
 function downloadCardsCsv(
   cards: Pick<CatalogCard, 'name' | 'number' | 'collectionName'>[],
   fileName: string,
@@ -110,12 +140,14 @@ function downloadCardsCsv(
 }
 
 function downloadCardsHtml(
-  cards: Pick<
-    CatalogCard,
-    'collectionName' | 'imageUrl' | 'name' | 'number' | 'printedTotal'
-  >[],
+  cards: VisualExportCard[],
   fileName: string,
   title: string,
+  summary?: {
+    label: string;
+    value: number;
+    note?: string;
+  },
 ) {
   const generatedAt = new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
@@ -136,6 +168,11 @@ function downloadCardsHtml(
           <div class="card-info">
             <strong>${escapeHtml(card.name)}</strong>
             <span>${escapeHtml(card.collectionName)} #${escapeHtml(card.number)}/${escapeHtml(card.printedTotal)}</span>
+            ${
+              typeof card.unitPrice === 'number'
+                ? `<em>${escapeHtml(formatBRL(card.unitPrice))}</em>`
+                : ''
+            }
           </div>
         </article>`;
       },
@@ -241,6 +278,42 @@ function downloadCardsHtml(
       gap: 4px;
     }
 
+    em {
+      display: block;
+      margin-top: 2px;
+      color: #c43d3d;
+      font-size: 0.82rem;
+      font-style: normal;
+      font-weight: 950;
+    }
+
+    .summary {
+      display: grid;
+      gap: 4px;
+      margin-top: 22px;
+      border: 1px solid #ded7ca;
+      border-radius: 8px;
+      padding: 16px;
+      background: #fffdf8;
+      break-inside: avoid;
+    }
+
+    .summary span {
+      color: #667085;
+      font-size: 0.86rem;
+      font-weight: 850;
+    }
+
+    .summary strong {
+      color: #c43d3d;
+      font-size: 1.45rem;
+    }
+
+    .summary p {
+      margin-top: 4px;
+      font-size: 0.82rem;
+    }
+
     strong {
       font-size: 0.86rem;
       line-height: 1.25;
@@ -285,6 +358,15 @@ function downloadCardsHtml(
       span {
         font-size: 0.68rem;
       }
+
+      em {
+        font-size: 0.72rem;
+      }
+
+      .summary {
+        margin-top: 12px;
+        padding: 10px;
+      }
     }
   </style>
 </head>
@@ -300,6 +382,15 @@ function downloadCardsHtml(
     <section class="grid">
       ${cardsHtml}
     </section>
+    ${
+      summary
+        ? `<section class="summary">
+            <span>${escapeHtml(summary.label)}</span>
+            <strong>${escapeHtml(formatBRL(summary.value))}</strong>
+            ${summary.note ? `<p>${escapeHtml(summary.note)}</p>` : ''}
+          </section>`
+        : ''
+    }
   </main>
 </body>
 </html>`;
@@ -328,6 +419,7 @@ export function DashboardPage() {
   const [error, setError] = useState('');
   const [removingId, setRemovingId] = useState<string>();
   const [preferredCollectionId, setPreferredCollectionId] = useState('');
+  const [exportingMissingVisual, setExportingMissingVisual] = useState(false);
   const [loadedCatalogCollection, setLoadedCatalogCollection] = useState<{
     collectionId: string;
     collection: TcgCollection | null;
@@ -522,12 +614,56 @@ export function DashboardPage() {
     );
   }
 
-  function handleExportMissingCardsHtml() {
-    downloadCardsHtml(
-      missingCardsForExport,
-      getExportFileName(activeCollectionName, 'faltantes-visual', 'html'),
-      `Cartas faltantes - ${activeCollectionName}`,
-    );
+  async function handleExportMissingCardsHtml() {
+    setExportingMissingVisual(true);
+    setError('');
+
+    try {
+      const pricedCards = await mapWithConcurrency(
+        missingCardsForExport,
+        4,
+        async (card) => {
+          try {
+            const quote = await getCardPrice(card);
+            return {
+              ...card,
+              unitPrice: getQuoteUnitPrice(quote),
+            };
+          } catch {
+            return {
+              ...card,
+              unitPrice: undefined,
+            };
+          }
+        },
+      );
+      const totalToComplete = pricedCards.reduce(
+        (total, card) =>
+          typeof card.unitPrice === 'number' ? total + card.unitPrice : total,
+        0,
+      );
+      const unquotedCount = pricedCards.filter(
+        (card) => typeof card.unitPrice !== 'number',
+      ).length;
+
+      downloadCardsHtml(
+        pricedCards,
+        getExportFileName(activeCollectionName, 'faltantes-visual', 'html'),
+        `Cartas faltantes - ${activeCollectionName}`,
+        {
+          label: 'Total estimado para completar',
+          value: totalToComplete,
+          note:
+            unquotedCount > 0
+              ? `${unquotedCount} carta(s) ficaram sem cotação.`
+              : 'Cálculo usando o primeiro preço mínimo de cada carta.',
+        },
+      );
+    } catch (exportError) {
+      setError(getFriendlyFirebaseError(exportError));
+    } finally {
+      setExportingMissingVisual(false);
+    }
   }
 
   async function handleRemove(cardId: string) {
@@ -712,11 +848,19 @@ export function DashboardPage() {
               <button
                 className="secondary-action compact"
                 type="button"
-                disabled={loadingActiveCatalog || !activeCatalogCollection}
-                onClick={handleExportMissingCardsHtml}
+                disabled={
+                  loadingActiveCatalog ||
+                  !activeCatalogCollection ||
+                  exportingMissingVisual
+                }
+                onClick={() => void handleExportMissingCardsHtml()}
               >
-                <Download size={16} aria-hidden="true" />
-                Visual faltantes
+                {exportingMissingVisual ? (
+                  <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                ) : (
+                  <Download size={16} aria-hidden="true" />
+                )}
+                {exportingMissingVisual ? 'Cotando...' : 'Visual faltantes'}
               </button>
             </div>
           </div>
