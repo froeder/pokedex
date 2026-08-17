@@ -1,18 +1,21 @@
-import { LoaderCircle, Plus } from 'lucide-react';
+import { Download, LoaderCircle, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CardDetailsModal } from '../components/CardDetailsModal';
 import { CardGrid } from '../components/CardGrid';
 import { EmptyState } from '../components/EmptyState';
 import { useAuth } from '../hooks/useAuth';
-import { loadCatalogCollections } from '../services/catalogService';
+import {
+  loadCatalogCollections,
+  loadCollectionCards,
+} from '../services/catalogService';
 import {
   removeUserCard,
   subscribeToUserCards,
   updateUserCardPriceQuote,
   updateUserCardQuantity,
 } from '../services/collectionService';
-import type { PriceQuote, TcgCollection, UserCard } from '../types';
+import type { CatalogCard, PriceQuote, TcgCollection, UserCard } from '../types';
 import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 
 function normalizeCollectionKey(value: string) {
@@ -21,6 +24,62 @@ function normalizeCollectionKey(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\s+/g, '');
+}
+
+function escapeCsvField(value: string | number) {
+  const stringValue = String(value);
+
+  if (!/[",\n\r]/.test(stringValue)) {
+    return stringValue;
+  }
+
+  return `"${stringValue.replace(/"/g, '""')}"`;
+}
+
+function getExportFileName(collectionName: string, suffix: string) {
+  const normalizedName = collectionName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return `pokedex-${normalizedName || 'colecao'}-${suffix}.csv`;
+}
+
+function sortCardsForExport<T extends Pick<CatalogCard, 'name' | 'number'>>(
+  cards: T[],
+) {
+  return [...cards].sort(
+    (first, second) =>
+      first.number.localeCompare(second.number, 'pt-BR', { numeric: true }) ||
+      first.name.localeCompare(second.name, 'pt-BR'),
+  );
+}
+
+function downloadCardsCsv(
+  cards: Pick<CatalogCard, 'name' | 'number' | 'collectionName'>[],
+  fileName: string,
+) {
+  const rows = [
+    ['Nome', 'Numero', 'Colecao'],
+    ...cards.map((card) => [card.name, card.number, card.collectionName]),
+  ];
+  const csv = rows
+    .map((row) => row.map((cell) => escapeCsvField(cell)).join(','))
+    .join('\n');
+  const blob = new Blob([`\uFEFF${csv}`], {
+    type: 'text/csv;charset=utf-8',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export function DashboardPage() {
@@ -34,6 +93,10 @@ export function DashboardPage() {
   const [error, setError] = useState('');
   const [removingId, setRemovingId] = useState<string>();
   const [preferredCollectionId, setPreferredCollectionId] = useState('');
+  const [loadedCatalogCollection, setLoadedCatalogCollection] = useState<{
+    collectionId: string;
+    collection: TcgCollection | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -140,6 +203,77 @@ export function DashboardPage() {
   const activeCollection = groupedCollections.find(
     (group) => group.collectionId === activeCollectionId,
   );
+
+  useEffect(() => {
+    if (!activeCollectionId) {
+      return undefined;
+    }
+
+    let ignore = false;
+
+    loadCollectionCards(activeCollectionId)
+      .then((collection) => {
+        if (!ignore) {
+          setLoadedCatalogCollection({
+            collectionId: activeCollectionId,
+            collection,
+          });
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setLoadedCatalogCollection({
+            collectionId: activeCollectionId,
+            collection: null,
+          });
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeCollectionId]);
+
+  const activeCatalogCollection =
+    loadedCatalogCollection?.collectionId === activeCollectionId
+      ? loadedCatalogCollection.collection
+      : null;
+  const loadingActiveCatalog = Boolean(
+    activeCollectionId &&
+      loadedCatalogCollection?.collectionId !== activeCollectionId,
+  );
+
+  const ownedCardsForExport = useMemo(
+    () => sortCardsForExport(activeCollection?.cards ?? []),
+    [activeCollection],
+  );
+
+  const missingCardsForExport = useMemo(() => {
+    const ownedIds = new Set(activeCollection?.cards.map((card) => card.id) ?? []);
+
+    return sortCardsForExport(
+      (activeCatalogCollection?.cards ?? []).filter(
+        (card) => !ownedIds.has(card.id),
+      ),
+    );
+  }, [activeCatalogCollection, activeCollection]);
+
+  const activeCollectionName =
+    activeCatalogCollection?.name ?? activeCollection?.name ?? 'Coleção';
+
+  function handleExportOwnedCards() {
+    downloadCardsCsv(
+      ownedCardsForExport,
+      getExportFileName(activeCollectionName, 'tenho'),
+    );
+  }
+
+  function handleExportMissingCards() {
+    downloadCardsCsv(
+      missingCardsForExport,
+      getExportFileName(activeCollectionName, 'faltantes'),
+    );
+  }
 
   async function handleRemove(cardId: string) {
     if (!user) {
@@ -281,14 +415,37 @@ export function DashboardPage() {
           ) : null}
 
           <div className="dashboard-collection-summary">
-            <span>
-              {activeCollection?.ownedCount ?? cards.length} cartas nesta coleção
-            </span>
-            <strong>
-              {activeCollection?.completion != null
-                ? `${activeCollection.completion}% concluído`
-                : '—'}
-            </strong>
+            <div className="dashboard-collection-metrics">
+              <span>
+                {activeCollection?.ownedCount ?? cards.length} cartas nesta coleção
+              </span>
+              <strong>
+                {activeCollection?.completion != null
+                  ? `${activeCollection.completion}% concluído`
+                  : '—'}
+              </strong>
+            </div>
+
+            <div className="dashboard-export-actions">
+              <button
+                className="secondary-action compact"
+                type="button"
+                disabled={ownedCardsForExport.length === 0}
+                onClick={handleExportOwnedCards}
+              >
+                <Download size={16} aria-hidden="true" />
+                Exportar tenho
+              </button>
+              <button
+                className="secondary-action compact"
+                type="button"
+                disabled={loadingActiveCatalog || !activeCatalogCollection}
+                onClick={handleExportMissingCards}
+              >
+                <Download size={16} aria-hidden="true" />
+                Exportar faltantes
+              </button>
+            </div>
           </div>
 
           <CardGrid

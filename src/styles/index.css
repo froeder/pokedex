@@ -973,11 +973,30 @@ img {
 
 .dashboard-collection-summary {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   color: var(--muted);
   font-size: 0.92rem;
   font-weight: 800;
+}
+
+.dashboard-collection-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.dashboard-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dashboard-export-actions .secondary-action {
+  min-height: 38px;
 }
 
 .catalog-card-open > img {
