@@ -47,6 +47,17 @@ export function CardGrid({
                 </div>
               </div>
 
+              <div className="type-list" aria-label="Tipo">
+                {card.types.map((type) => (
+                  <span
+                    className={`type-pill type-${getTypeClass(type)}`}
+                    key={type}
+                  >
+                    {getTypeLabel(type)}
+                  </span>
+                ))}
+              </div>
+
               <div className="owned-card-price">
                 <div>
                   <span>Unitário</span>
@@ -61,17 +72,6 @@ export function CardGrid({
               </div>
 
               <div className="card-footer-row">
-                <div className="type-list" aria-label="Tipo">
-                  {card.types.map((type) => (
-                    <span
-                      className={`type-pill type-${getTypeClass(type)}`}
-                      key={type}
-                    >
-                      {getTypeLabel(type)}
-                    </span>
-                  ))}
-                </div>
-
                 <div className="owned-card-actions">
                   <button
                     className="icon-button subtle-danger"
