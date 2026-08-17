@@ -36,7 +36,11 @@ function escapeCsvField(value: string | number) {
   return `"${stringValue.replace(/"/g, '""')}"`;
 }
 
-function getExportFileName(collectionName: string, suffix: string) {
+function getExportFileName(
+  collectionName: string,
+  suffix: string,
+  extension: 'csv' | 'html',
+) {
   const normalizedName = collectionName
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -44,7 +48,28 @@ function getExportFileName(collectionName: string, suffix: string) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-  return `pokedex-${normalizedName || 'colecao'}-${suffix}.csv`;
+  return `pokedex-${normalizedName || 'colecao'}-${suffix}.${extension}`;
+}
+
+function escapeHtml(value: string | number) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getCardArtworkUrl(card: Pick<CatalogCard, 'imageUrl'>) {
+  if (!card.imageUrl) {
+    return '';
+  }
+
+  if (/\.(webp|png|jpe?g)$/i.test(card.imageUrl)) {
+    return card.imageUrl;
+  }
+
+  return `${card.imageUrl}/high.webp`;
 }
 
 function sortCardsForExport<T extends Pick<CatalogCard, 'name' | 'number'>>(
@@ -70,6 +95,214 @@ function downloadCardsCsv(
     .join('\n');
   const blob = new Blob([`\uFEFF${csv}`], {
     type: 'text/csv;charset=utf-8',
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadCardsHtml(
+  cards: Pick<
+    CatalogCard,
+    'collectionName' | 'imageUrl' | 'name' | 'number' | 'printedTotal'
+  >[],
+  fileName: string,
+  title: string,
+) {
+  const generatedAt = new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date());
+  const cardsHtml = cards
+    .map(
+      (card) => {
+        const artworkUrl = getCardArtworkUrl(card);
+
+        return `
+        <article class="card">
+          ${
+            artworkUrl
+              ? `<img src="${escapeHtml(artworkUrl)}" alt="${escapeHtml(card.name)}" loading="lazy">`
+              : `<div class="image-placeholder">${escapeHtml(card.name)}</div>`
+          }
+          <div class="card-info">
+            <strong>${escapeHtml(card.name)}</strong>
+            <span>${escapeHtml(card.collectionName)} #${escapeHtml(card.number)}/${escapeHtml(card.printedTotal)}</span>
+          </div>
+        </article>`;
+      },
+    )
+    .join('');
+  const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root {
+      color: #18212b;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f6f2ea;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 42px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 22px;
+      border-bottom: 1px solid #ded7ca;
+      padding-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      color: #c43d3d;
+      font-size: 1.85rem;
+      line-height: 1.15;
+    }
+
+    p {
+      margin: 0;
+      color: #667085;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    button {
+      min-height: 40px;
+      border: 1px solid #c43d3d;
+      border-radius: 8px;
+      padding: 0 14px;
+      background: #c43d3d;
+      color: #ffffff;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      display: grid;
+      gap: 8px;
+      break-inside: avoid;
+      border: 1px solid #ded7ca;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fffdf8;
+    }
+
+    img {
+      width: 100%;
+      aspect-ratio: 245 / 337;
+      object-fit: contain;
+      filter: drop-shadow(0 8px 10px rgb(24 33 43 / 16%));
+    }
+
+    .image-placeholder {
+      display: grid;
+      width: 100%;
+      aspect-ratio: 245 / 337;
+      place-items: center;
+      border: 1px dashed #cfc7b9;
+      border-radius: 8px;
+      color: #667085;
+      text-align: center;
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    .card-info {
+      display: grid;
+      gap: 4px;
+    }
+
+    strong {
+      font-size: 0.86rem;
+      line-height: 1.25;
+    }
+
+    span {
+      color: #667085;
+      font-size: 0.74rem;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .page {
+        width: auto;
+        padding: 0;
+      }
+
+      button {
+        display: none;
+      }
+
+      .grid {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+      }
+
+      .card {
+        gap: 6px;
+        padding: 8px;
+        border-radius: 6px;
+      }
+
+      strong {
+        font-size: 0.78rem;
+      }
+
+      span {
+        font-size: 0.68rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>${escapeHtml(title)}</h1>
+        <p>${cards.length} cartas · gerado em ${escapeHtml(generatedAt)}</p>
+      </div>
+      <button type="button" onclick="window.print()">Imprimir / salvar PDF</button>
+    </header>
+    <section class="grid">
+      ${cardsHtml}
+    </section>
+  </main>
+</body>
+</html>`;
+  const blob = new Blob([html], {
+    type: 'text/html;charset=utf-8',
   });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -264,14 +497,30 @@ export function DashboardPage() {
   function handleExportOwnedCards() {
     downloadCardsCsv(
       ownedCardsForExport,
-      getExportFileName(activeCollectionName, 'tenho'),
+      getExportFileName(activeCollectionName, 'tenho', 'csv'),
     );
   }
 
   function handleExportMissingCards() {
     downloadCardsCsv(
       missingCardsForExport,
-      getExportFileName(activeCollectionName, 'faltantes'),
+      getExportFileName(activeCollectionName, 'faltantes', 'csv'),
+    );
+  }
+
+  function handleExportOwnedCardsHtml() {
+    downloadCardsHtml(
+      ownedCardsForExport,
+      getExportFileName(activeCollectionName, 'tenho-visual', 'html'),
+      `Cartas que tenho - ${activeCollectionName}`,
+    );
+  }
+
+  function handleExportMissingCardsHtml() {
+    downloadCardsHtml(
+      missingCardsForExport,
+      getExportFileName(activeCollectionName, 'faltantes-visual', 'html'),
+      `Cartas faltantes - ${activeCollectionName}`,
     );
   }
 
@@ -439,11 +688,29 @@ export function DashboardPage() {
               <button
                 className="secondary-action compact"
                 type="button"
+                disabled={ownedCardsForExport.length === 0}
+                onClick={handleExportOwnedCardsHtml}
+              >
+                <Download size={16} aria-hidden="true" />
+                Visual tenho
+              </button>
+              <button
+                className="secondary-action compact"
+                type="button"
                 disabled={loadingActiveCatalog || !activeCatalogCollection}
                 onClick={handleExportMissingCards}
               >
                 <Download size={16} aria-hidden="true" />
                 Exportar faltantes
+              </button>
+              <button
+                className="secondary-action compact"
+                type="button"
+                disabled={loadingActiveCatalog || !activeCatalogCollection}
+                onClick={handleExportMissingCardsHtml}
+              >
+                <Download size={16} aria-hidden="true" />
+                Visual faltantes
               </button>
             </div>
           </div>
