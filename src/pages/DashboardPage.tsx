@@ -1,4 +1,4 @@
-import { Download, LoaderCircle, Plus } from 'lucide-react';
+import { Download, LoaderCircle, Plus, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CardDetailsModal } from '../components/CardDetailsModal';
@@ -26,6 +26,19 @@ type VisualExportCard = Pick<
   'collectionName' | 'imageUrl' | 'name' | 'number' | 'printedTotal'
 > & {
   unitPrice?: number;
+};
+
+type VisualExportSummaryItem = {
+  label: string;
+  value: number;
+  note?: string;
+};
+
+type VisualExportGroup = {
+  title: string;
+  cards: VisualExportCard[];
+  total?: number;
+  note?: string;
 };
 
 function normalizeCollectionKey(value: string) {
@@ -80,6 +93,25 @@ function getCardArtworkUrl(card: Pick<CatalogCard, 'imageUrl'>) {
   }
 
   return `${card.imageUrl}/high.webp`;
+}
+
+function getCardNumberValue(value: string) {
+  const numberMatch = value.match(/\d+/);
+
+  return numberMatch ? Number(numberMatch[0]) : null;
+}
+
+function isSpecialCollectionCard(
+  card: Pick<CatalogCard, 'number' | 'printedTotal'>,
+) {
+  const cardNumber = getCardNumberValue(card.number);
+  const printedTotal = getCardNumberValue(card.printedTotal);
+
+  if (cardNumber == null || printedTotal == null) {
+    return false;
+  }
+
+  return cardNumber > printedTotal;
 }
 
 function sortCardsForExport<T extends Pick<CatalogCard, 'name' | 'number'>>(
@@ -147,13 +179,15 @@ function downloadCardsHtml(
     label: string;
     value: number;
     note?: string;
+    items?: VisualExportSummaryItem[];
   },
+  groups?: VisualExportGroup[],
 ) {
   const generatedAt = new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date());
-  const cardsHtml = cards
+  const getCardsHtml = (nextCards: VisualExportCard[]) => nextCards
     .map(
       (card) => {
         const artworkUrl = getCardArtworkUrl(card);
@@ -176,6 +210,28 @@ function downloadCardsHtml(
           </div>
         </article>`;
       },
+    )
+    .join('');
+  const cardsHtml = getCardsHtml(cards);
+  const groupedCardsHtml = groups
+    ?.map(
+      (group) => `
+      <section class="card-group">
+        <div class="group-heading">
+          <div>
+            <h2>${escapeHtml(group.title)}</h2>
+            <p>${group.cards.length} cartas${group.note ? ` · ${escapeHtml(group.note)}` : ''}</p>
+          </div>
+          ${
+            typeof group.total === 'number'
+              ? `<strong>${escapeHtml(formatBRL(group.total))}</strong>`
+              : ''
+          }
+        </div>
+        <div class="grid">
+          ${getCardsHtml(group.cards)}
+        </div>
+      </section>`,
     )
     .join('');
   const html = `<!doctype html>
@@ -241,6 +297,40 @@ function downloadCardsHtml(
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
       gap: 12px;
+    }
+
+    .card-group {
+      display: grid;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .card-group:first-of-type {
+      margin-top: 0;
+    }
+
+    .group-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+      break-inside: avoid;
+      border: 1px solid #ded7ca;
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: #fffdf8;
+    }
+
+    h2 {
+      margin: 0 0 4px;
+      color: #18212b;
+      font-size: 1.12rem;
+    }
+
+    .group-heading strong {
+      color: #c43d3d;
+      font-size: 1.12rem;
+      white-space: nowrap;
     }
 
     .card {
@@ -309,6 +399,26 @@ function downloadCardsHtml(
       font-size: 1.45rem;
     }
 
+    .summary-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .summary-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid #eee4d5;
+      padding-top: 8px;
+    }
+
+    .summary-item strong {
+      font-size: 1.08rem;
+      white-space: nowrap;
+    }
+
     .summary p {
       margin-top: 4px;
       font-size: 0.82rem;
@@ -345,6 +455,18 @@ function downloadCardsHtml(
         gap: 10px;
       }
 
+      .card-group {
+        margin-top: 14px;
+      }
+
+      .group-heading {
+        padding: 8px 10px;
+      }
+
+      h2 {
+        font-size: 0.95rem;
+      }
+
       .card {
         gap: 6px;
         padding: 8px;
@@ -379,14 +501,33 @@ function downloadCardsHtml(
       </div>
       <button type="button" onclick="window.print()">Imprimir / salvar PDF</button>
     </header>
-    <section class="grid">
-      ${cardsHtml}
-    </section>
+    ${
+      groupedCardsHtml
+        ? groupedCardsHtml
+        : `<section class="grid">
+            ${cardsHtml}
+          </section>`
+    }
     ${
       summary
         ? `<section class="summary">
             <span>${escapeHtml(summary.label)}</span>
             <strong>${escapeHtml(formatBRL(summary.value))}</strong>
+            ${
+              summary.items?.length
+                ? `<div class="summary-list">
+                    ${summary.items
+                      .map(
+                        (item) => `
+                        <div class="summary-item">
+                          <span>${escapeHtml(item.label)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span>
+                          <strong>${escapeHtml(formatBRL(item.value))}</strong>
+                        </div>`,
+                      )
+                      .join('')}
+                  </div>`
+                : ''
+            }
             ${summary.note ? `<p>${escapeHtml(summary.note)}</p>` : ''}
           </section>`
         : ''
@@ -420,6 +561,11 @@ export function DashboardPage() {
   const [removingId, setRemovingId] = useState<string>();
   const [preferredCollectionId, setPreferredCollectionId] = useState('');
   const [exportingMissingVisual, setExportingMissingVisual] = useState(false);
+  const [syncingCollectionPrices, setSyncingCollectionPrices] = useState<{
+    completed: number;
+    failed: number;
+    total: number;
+  } | null>(null);
   const [loadedCatalogCollection, setLoadedCatalogCollection] = useState<{
     collectionId: string;
     collection: TcgCollection | null;
@@ -642,6 +788,26 @@ export function DashboardPage() {
           typeof card.unitPrice === 'number' ? total + card.unitPrice : total,
         0,
       );
+      const commonCards = pricedCards.filter(
+        (card) => !isSpecialCollectionCard(card),
+      );
+      const specialCards = pricedCards.filter(isSpecialCollectionCard);
+      const commonTotal = commonCards.reduce(
+        (total, card) =>
+          typeof card.unitPrice === 'number' ? total + card.unitPrice : total,
+        0,
+      );
+      const specialTotal = specialCards.reduce(
+        (total, card) =>
+          typeof card.unitPrice === 'number' ? total + card.unitPrice : total,
+        0,
+      );
+      const commonUnquotedCount = commonCards.filter(
+        (card) => typeof card.unitPrice !== 'number',
+      ).length;
+      const specialUnquotedCount = specialCards.filter(
+        (card) => typeof card.unitPrice !== 'number',
+      ).length;
       const unquotedCount = pricedCards.filter(
         (card) => typeof card.unitPrice !== 'number',
       ).length;
@@ -653,11 +819,43 @@ export function DashboardPage() {
         {
           label: 'Total estimado para completar',
           value: totalToComplete,
+          items: [
+            {
+              label: 'Faltantes comuns',
+              value: commonTotal,
+              note:
+                commonUnquotedCount > 0
+                  ? `${commonUnquotedCount} sem cotação`
+                  : undefined,
+            },
+            {
+              label: 'Faltantes especiais',
+              value: specialTotal,
+              note:
+                specialUnquotedCount > 0
+                  ? `${specialUnquotedCount} sem cotação`
+                  : undefined,
+            },
+          ],
           note:
             unquotedCount > 0
               ? `${unquotedCount} carta(s) ficaram sem cotação.`
               : 'Cálculo usando o primeiro preço mínimo de cada carta.',
         },
+        [
+          {
+            title: 'Comuns',
+            cards: commonCards,
+            total: commonTotal,
+            note: 'numeração dentro do total da coleção',
+          },
+          {
+            title: 'Especiais',
+            cards: specialCards,
+            total: specialTotal,
+            note: 'numeração acima do total da coleção',
+          },
+        ],
       );
     } catch (exportError) {
       setError(getFriendlyFirebaseError(exportError));
@@ -737,6 +935,61 @@ export function DashboardPage() {
     },
     [handlePriceQuoteLoaded, selectedCardId],
   );
+
+  async function handleSyncCollectionPrices() {
+    if (!user || !activeCollection?.cards.length || syncingCollectionPrices) {
+      return;
+    }
+
+    const cardsToSync = [...activeCollection.cards];
+
+    setError('');
+    setSyncingCollectionPrices({
+      completed: 0,
+      failed: 0,
+      total: cardsToSync.length,
+    });
+
+    let failed = 0;
+
+    await mapWithConcurrency(cardsToSync, 3, async (card) => {
+      try {
+        const priceQuote = await getCardPrice(card, { forceRefresh: true });
+        await updateUserCardPriceQuote(user.uid, card.id, priceQuote);
+
+        setCards((currentCards) =>
+          currentCards.map((currentCard) =>
+            currentCard.id === card.id
+              ? { ...currentCard, priceQuote }
+              : currentCard,
+          ),
+        );
+        setSelectedCard((currentCard) =>
+          currentCard?.id === card.id
+            ? { ...currentCard, priceQuote }
+            : currentCard,
+        );
+      } catch {
+        failed += 1;
+      } finally {
+        setSyncingCollectionPrices((currentSync) =>
+          currentSync
+            ? {
+                ...currentSync,
+                completed: currentSync.completed + 1,
+                failed,
+              }
+            : currentSync,
+        );
+      }
+    });
+
+    setSyncingCollectionPrices(null);
+
+    if (failed > 0) {
+      setError(`${failed} carta(s) não tiveram a cotação sincronizada.`);
+    }
+  }
 
   return (
     <div className="page-stack">
@@ -818,6 +1071,24 @@ export function DashboardPage() {
             </div>
 
             <div className="dashboard-export-actions">
+              <button
+                className="secondary-action compact"
+                type="button"
+                disabled={
+                  !activeCollection?.cards.length ||
+                  Boolean(syncingCollectionPrices)
+                }
+                onClick={() => void handleSyncCollectionPrices()}
+              >
+                {syncingCollectionPrices ? (
+                  <LoaderCircle className="spin" size={16} aria-hidden="true" />
+                ) : (
+                  <RefreshCw size={16} aria-hidden="true" />
+                )}
+                {syncingCollectionPrices
+                  ? `Sincronizando ${syncingCollectionPrices.completed}/${syncingCollectionPrices.total}`
+                  : 'Sincronizar cotações'}
+              </button>
               <button
                 className="secondary-action compact"
                 type="button"

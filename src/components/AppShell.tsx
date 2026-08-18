@@ -1,4 +1,4 @@
-import { Download, Grid2X2, LibraryBig, LogOut, Plus, UserCircle } from 'lucide-react';
+import { Download, Grid2X2, LibraryBig, Plus, UserCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -15,7 +15,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export function AppShell() {
-  const { isDemoMode, logout, user } = useAuth();
+  const { isDemoMode, user } = useAuth();
   const navigate = useNavigate();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(
     null,
@@ -93,15 +93,6 @@ export function AppShell() {
           >
             <UserCircle size={18} aria-hidden="true" />
             <span>{user?.displayName || user?.email}</span>
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={() => void logout()}
-            title="Sair"
-            aria-label="Sair"
-          >
-            <LogOut size={18} aria-hidden="true" />
           </button>
         </div>
       </header>

@@ -1,11 +1,11 @@
-import { LibraryBig, Mail, Sparkles, UserCircle } from 'lucide-react';
+import { LibraryBig, LogOut, Mail, Sparkles, UserCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { subscribeToUserCards } from '../services/collectionService';
 import type { UserCard } from '../types';
 
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { logout, user } = useAuth();
   const [cards, setCards] = useState<UserCard[]>([]);
 
   useEffect(() => {
@@ -59,6 +59,17 @@ export function ProfilePage() {
             <span>Coleções</span>
             <strong>{uniqueCollections}</strong>
           </div>
+        </div>
+
+        <div className="profile-actions">
+          <button
+            className="secondary-action subtle-danger"
+            type="button"
+            onClick={() => void logout()}
+          >
+            <LogOut size={18} aria-hidden="true" />
+            Sair
+          </button>
         </div>
       </section>
 

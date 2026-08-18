@@ -1466,6 +1466,11 @@ img {
   font-size: 1.25rem;
 }
 
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .profile-highlights {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
