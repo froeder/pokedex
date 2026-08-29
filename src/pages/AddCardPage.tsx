@@ -1,10 +1,10 @@
 import {
   Check,
   CircleCheck,
+  Hash,
   Info,
   LoaderCircle,
   Plus,
-  Hash,
   Search,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -106,6 +106,7 @@ export function AddCardPage() {
   const [toast, setToast] = useState<{ id: number; message: string } | null>(
     null,
   );
+  const numberInputRef = useRef<HTMLInputElement>(null);
   const cardSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -235,9 +236,31 @@ export function AddCardPage() {
     );
   }, [collectionQuery, collections]);
 
+  const cardNumberEntries = useMemo(
+    () => parseCardNumberEntries(numberEntries),
+    [numberEntries],
+  );
+
+  const cardsFilteredByNumber = useMemo(() => {
+    const cards = activeCollection?.cards ?? [];
+    const matchedCards = cardNumberEntries
+      .map((entry) => findCardByNumber(cards, entry))
+      .filter((card): card is CatalogCard => Boolean(card));
+    const uniqueCards = new Map(
+      matchedCards.map((card) => [card.id, card]),
+    );
+
+    return Array.from(uniqueCards.values());
+  }, [activeCollection, cardNumberEntries]);
+
   const filteredCards = useMemo(() => {
     const cards = activeCollection?.cards ?? [];
     const normalizedQuery = normalizeSearch(cardQuery.trim());
+
+    if (cardNumberEntries.length > 0) {
+      return cardsFilteredByNumber;
+    }
+
     const nextCards = [...cards].sort((first, second) =>
       first.name.localeCompare(second.name, 'pt-BR'),
     );
@@ -247,7 +270,7 @@ export function AddCardPage() {
     }
 
     return nextCards.filter((card) => getCardText(card).includes(normalizedQuery));
-  }, [activeCollection, cardQuery]);
+  }, [activeCollection, cardNumberEntries, cardQuery, cardsFilteredByNumber]);
 
   async function handleAddCard(card: CatalogCard) {
     if (!user || addingId) {
@@ -293,7 +316,7 @@ export function AddCardPage() {
       return;
     }
 
-    const entries = parseCardNumberEntries(numberEntries);
+    const entries = cardNumberEntries;
 
     if (entries.length === 0) {
       return;
@@ -351,9 +374,13 @@ export function AddCardPage() {
       }
 
       setNumberEntries('');
+      window.requestAnimationFrame(() => {
+        numberInputRef.current?.focus();
+      });
     } catch (addError) {
       setError(getFriendlyFirebaseError(addError));
     } finally {
+      numberInputRef.current?.focus();
       setAddingByNumber(false);
     }
   }
@@ -477,7 +504,11 @@ export function AddCardPage() {
                 {selectedCollection.cardCount} cartas ·{' '}
                 {selectedCollection.ligaSetCode}
               </span>
-              <span>{filteredCards.length} exibidas</span>
+              <span>
+                {cardNumberEntries.length > 0
+                  ? `${cardsFilteredByNumber.length}/${cardNumberEntries.length} números encontrados`
+                  : `${filteredCards.length} exibidas`}
+              </span>
             </div>
           ) : null}
 
@@ -491,6 +522,7 @@ export function AddCardPage() {
             <label className="search-field number-add-field">
               <Hash size={18} aria-hidden="true" />
               <input
+                ref={numberInputRef}
                 aria-label="Adicionar por número da carta"
                 disabled={!activeCollection || loadingCards || addingByNumber}
                 inputMode="text"
@@ -506,7 +538,7 @@ export function AddCardPage() {
                 !activeCollection ||
                 loadingCards ||
                 addingByNumber ||
-                parseCardNumberEntries(numberEntries).length === 0
+                cardNumberEntries.length === 0
               }
               type="submit"
             >
@@ -515,7 +547,11 @@ export function AddCardPage() {
               ) : (
                 <Plus size={18} aria-hidden="true" />
               )}
-              {addingByNumber ? 'Adicionando...' : 'Adicionar números'}
+              {addingByNumber
+                ? 'Adicionando...'
+                : cardNumberEntries.length > 1
+                  ? 'Adicionar números'
+                  : 'Adicionar número'}
             </button>
           </form>
 
@@ -529,7 +565,11 @@ export function AddCardPage() {
                 <Search size={26} aria-hidden="true" />
               </div>
               <h2>Nenhuma carta encontrada</h2>
-              <p>Tente buscar por nome, número ou raridade.</p>
+              <p>
+                {cardNumberEntries.length > 0
+                  ? 'Confira se os números pertencem à coleção selecionada.'
+                  : 'Tente buscar por nome, número ou raridade.'}
+              </p>
             </div>
           ) : null}
 
