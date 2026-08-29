@@ -82,6 +82,11 @@ function findCardByNumber(cards: CatalogCard[], numberEntry: string) {
   );
 }
 
+type NumberBatchItem = {
+  card: CatalogCard;
+  quantity: number;
+};
+
 export function AddCardPage() {
   const { user } = useAuth();
   const [collections, setCollections] = useState<TcgCollection[]>([]);
@@ -241,17 +246,32 @@ export function AddCardPage() {
     [numberEntries],
   );
 
-  const cardsFilteredByNumber = useMemo(() => {
+  const numberBatchItems = useMemo(() => {
     const cards = activeCollection?.cards ?? [];
-    const matchedCards = cardNumberEntries
-      .map((entry) => findCardByNumber(cards, entry))
-      .filter((card): card is CatalogCard => Boolean(card));
-    const uniqueCards = new Map(
-      matchedCards.map((card) => [card.id, card]),
-    );
+    const items = new Map<string, NumberBatchItem>();
 
-    return Array.from(uniqueCards.values());
+    cardNumberEntries.forEach((entry) => {
+      const card = findCardByNumber(cards, entry);
+
+      if (!card) {
+        return;
+      }
+
+      const currentItem = items.get(card.id);
+
+      items.set(card.id, {
+        card,
+        quantity: (currentItem?.quantity ?? 0) + 1,
+      });
+    });
+
+    return Array.from(items.values());
   }, [activeCollection, cardNumberEntries]);
+
+  const cardsFilteredByNumber = useMemo(
+    () => numberBatchItems.map((item) => item.card),
+    [numberBatchItems],
+  );
 
   const filteredCards = useMemo(() => {
     const cards = activeCollection?.cards ?? [];
@@ -322,15 +342,13 @@ export function AddCardPage() {
       return;
     }
 
-    const cardsToAdd: CatalogCard[] = [];
+    const cardsToAdd = numberBatchItems;
     const missingEntries: string[] = [];
 
     entries.forEach((entry) => {
       const card = findCardByNumber(activeCollection.cards, entry);
 
-      if (card) {
-        cardsToAdd.push(card);
-      } else {
+      if (!card) {
         missingEntries.push(entry);
       }
     });
@@ -348,14 +366,14 @@ export function AddCardPage() {
     let addedCount = 0;
 
     try {
-      for (const card of cardsToAdd) {
+      for (const { card, quantity } of cardsToAdd) {
         const hydratedCard = await hydrateCatalogCard(card);
-        await addUserCard(user.uid, hydratedCard, 1);
-        addedCount += 1;
+        await addUserCard(user.uid, hydratedCard, quantity);
+        addedCount += quantity;
 
         setOwnedQuantities((currentQuantities) => ({
           ...currentQuantities,
-          [card.id]: (currentQuantities[card.id] ?? 0) + 1,
+          [card.id]: (currentQuantities[card.id] ?? 0) + quantity,
         }));
       }
 
@@ -363,8 +381,8 @@ export function AddCardPage() {
         id: Date.now(),
         message:
           addedCount === 1
-            ? `${cardsToAdd[0].name} adicionada à coleção.`
-            : `${addedCount} cartas adicionadas à coleção.`,
+            ? `${cardsToAdd[0].card.name} adicionada à coleção.`
+            : `${addedCount} unidades adicionadas à coleção.`,
       });
 
       if (missingEntries.length > 0) {
@@ -506,7 +524,7 @@ export function AddCardPage() {
               </span>
               <span>
                 {cardNumberEntries.length > 0
-                  ? `${cardsFilteredByNumber.length}/${cardNumberEntries.length} números encontrados`
+                  ? `${cardsFilteredByNumber.length} cartas · ${cardNumberEntries.length} números no lote`
                   : `${filteredCards.length} exibidas`}
               </span>
             </div>
@@ -577,6 +595,9 @@ export function AddCardPage() {
             <div className="catalog-card-list">
               {filteredCards.map((card) => {
                 const ownedQuantity = ownedQuantities[card.id] ?? 0;
+                const batchQuantity =
+                  numberBatchItems.find((item) => item.card.id === card.id)
+                    ?.quantity ?? 0;
                 const isAdded = ownedQuantity > 0;
                 const isAdding = addingId === card.id;
 
@@ -609,6 +630,12 @@ export function AddCardPage() {
                               </span>
                             ))}
                           </div>
+                        ) : null}
+
+                        {batchQuantity > 1 ? (
+                          <span className="batch-quantity-pill">
+                            +{batchQuantity} no lote
+                          </span>
                         ) : null}
                       </div>
 
