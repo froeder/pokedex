@@ -5,7 +5,7 @@ import type { CatalogCard, PriceQuote, PriceVariant } from '../types';
 import { getFirebaseErrorCode } from '../utils/firebaseErrors';
 
 const CACHE_TTL_MS = 1 * 24 * 60 * 60 * 1000;
-const PRICE_CACHE_VERSION = 5;
+const PRICE_CACHE_VERSION = 7;
 const UNAVAILABLE_TTL_MS = 15 * 60 * 1000;
 const PRICE_REQUEST_TIMEOUT_MS = 10000;
 const PRICE_CACHE_READ_TIMEOUT_MS = 2500;
@@ -14,6 +14,7 @@ const PRICE_LOOKUP_TIMEOUT_MS = 28000;
 const FUNCTION_UNAVAILABLE_KEY = 'pokedex:price-function-unavailable-until';
 const USE_LIGA_PRICE_API = true;
 const TCGDEX_API_URL = 'https://api.tcgdex.net/v2';
+const POKEMON_TCG_API_URL = 'https://api.pokemontcg.io/v2';
 const FRANKFURTER_API_URL = 'https://api.frankfurter.dev/v2';
 
 type ExchangeCurrency = 'EUR' | 'USD';
@@ -74,6 +75,42 @@ type TcgDexCardDetail = {
     cardmarket?: TcgDexCardmarketPricing;
     tcgplayer?: TcgDexTcgPlayerPricing;
   };
+};
+
+type PokemonTcgCardmarketPrices = {
+  averageSellPrice?: number;
+  lowPrice?: number;
+  trendPrice?: number;
+  avg30?: number;
+  reverseHoloSell?: number;
+  reverseHoloLow?: number;
+  reverseHoloTrend?: number;
+  reverseHoloAvg30?: number;
+};
+
+type PokemonTcgPlayerVariant = {
+  low?: number;
+  mid?: number;
+  high?: number;
+  market?: number;
+  directLow?: number;
+};
+
+type PokemonTcgCard = {
+  id?: string;
+  name?: string;
+  cardmarket?: {
+    url?: string;
+    prices?: PokemonTcgCardmarketPrices;
+  };
+  tcgplayer?: {
+    url?: string;
+    prices?: Record<string, PokemonTcgPlayerVariant | undefined>;
+  };
+};
+
+type PokemonTcgCardsResponse = {
+  data?: PokemonTcgCard[];
 };
 
 const exchangeRateCache = new Map<ExchangeCurrency, ExchangeRateCacheEntry>();
@@ -168,7 +205,8 @@ export function canReusePriceQuote(
 ) {
   const reusableSource =
     quote.source === 'LigaPokemon' ||
-    quote.source === 'TCGdex';
+    quote.source === 'TCGdex' ||
+    quote.source === 'PokemonTCG';
   const reusableVersion = quote.cacheVersion === PRICE_CACHE_VERSION;
 
   return reusableSource && reusableVersion && isPriceQuoteFresh(quote);
@@ -255,6 +293,21 @@ function getTcgDexCardUrl(card: CatalogCard, language: string) {
   return `${TCGDEX_API_URL}/${language}/sets/${encodeURIComponent(
     tcgdexSetId,
   )}/${encodeURIComponent(card.number)}`;
+}
+
+function getPokemonTcgSetId(card: CatalogCard) {
+  const setId = card.tcgdexSetId ?? card.collectionId;
+
+  return setId.replace(/^sv0(?=\d)/, 'sv').replace('03.5', '3pt5');
+}
+
+function getPokemonTcgCardsUrl(card: CatalogCard) {
+  const query = `set.id:${getPokemonTcgSetId(card)} number:${card.number.replace(
+    /^0+(?=\d)/,
+    '',
+  )}`;
+
+  return `${POKEMON_TCG_API_URL}/cards?q=${encodeURIComponent(query)}`;
 }
 
 async function getExchangeRate(
@@ -385,6 +438,105 @@ async function getTcgPlayerVariants(
   }
 
   return variants.filter(hasQuotedValue);
+}
+
+async function getPokemonTcgCardmarketVariants(
+  pricing: PokemonTcgCardmarketPrices | undefined,
+  options: GetCardPriceOptions = {},
+) {
+  if (!pricing) {
+    return [];
+  }
+
+  const rate = await getExchangeRate('EUR', options);
+  const variants: PriceVariant[] = [
+    {
+      label: 'Cardmarket',
+      minimum: convertToBRL(pricing.lowPrice, rate),
+      average: convertToBRL(
+        pricing.trendPrice ?? pricing.averageSellPrice ?? pricing.avg30,
+        rate,
+      ),
+    },
+    {
+      label: 'Cardmarket Reverso',
+      minimum: convertToBRL(pricing.reverseHoloLow, rate),
+      average: convertToBRL(
+        pricing.reverseHoloTrend ??
+          pricing.reverseHoloSell ??
+          pricing.reverseHoloAvg30,
+        rate,
+      ),
+    },
+  ];
+
+  return variants.filter(hasQuotedValue);
+}
+
+async function getPokemonTcgPlayerVariants(
+  pricing: Record<string, PokemonTcgPlayerVariant | undefined> | undefined,
+  options: GetCardPriceOptions = {},
+) {
+  if (!pricing) {
+    return [];
+  }
+
+  const rate = await getExchangeRate('USD', options);
+
+  return Object.entries(pricing)
+    .map(([key, value]) => ({
+      label: getTcgPlayerVariantLabel(key),
+      minimum: convertToBRL(value?.low ?? value?.directLow, rate),
+      average: convertToBRL(value?.market ?? value?.mid, rate),
+      maximum: convertToBRL(value?.high, rate),
+    }))
+    .filter(hasQuotedValue);
+}
+
+async function getPokemonTcgPriceQuote(
+  card: CatalogCard,
+  options: GetCardPriceOptions = {},
+): Promise<PriceQuote | null> {
+  const url = getPokemonTcgCardsUrl(card);
+  const response = await fetchJson<PokemonTcgCardsResponse>(url);
+  const pokemonTcgCard = response.data?.[0];
+
+  if (!pokemonTcgCard) {
+    return null;
+  }
+
+  const [cardmarketResult, tcgplayerResult] = await Promise.allSettled([
+    getPokemonTcgCardmarketVariants(pokemonTcgCard.cardmarket?.prices, options),
+    getPokemonTcgPlayerVariants(pokemonTcgCard.tcgplayer?.prices, options),
+  ]);
+  const variants = [
+    ...(cardmarketResult.status === 'fulfilled' ? cardmarketResult.value : []),
+    ...(tcgplayerResult.status === 'fulfilled' ? tcgplayerResult.value : []),
+  ];
+
+  if (!variants.length) {
+    return null;
+  }
+
+  const primaryPrice = pickPrimaryPrice(variants);
+  const fetchedAt = new Date().toISOString();
+
+  return {
+    cardId: card.id,
+    cardName: pokemonTcgCard.name ?? card.name,
+    collectionId: card.collectionId,
+    currency: 'BRL',
+    source: 'PokemonTCG',
+    url: pokemonTcgCard.cardmarket?.url ?? pokemonTcgCard.tcgplayer?.url ?? url,
+    cached: false,
+    cacheVersion: PRICE_CACHE_VERSION,
+    unavailableReason:
+      'Preço alternativo de Cardmarket/TCGplayer convertido para BRL.',
+    fetchedAt,
+    expiresAt: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+    variants,
+    ...primaryPrice,
+  };
 }
 
 async function getTcgDexPriceQuote(
@@ -573,6 +725,16 @@ async function getFreshPriceQuote(
     }
   } catch {
     // Continue to the next source before falling back to the local estimate.
+  }
+
+  try {
+    const pokemonTcgQuote = await getPokemonTcgPriceQuote(card, options);
+
+    if (pokemonTcgQuote) {
+      return pokemonTcgQuote;
+    }
+  } catch {
+    // Continue to the local estimate when every remote provider is unavailable.
   }
 
   return ligaPokemonQuote ?? createDemoQuote(card);

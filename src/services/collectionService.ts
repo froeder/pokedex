@@ -13,7 +13,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import type { CatalogCard, PokemonProfile, PriceQuote, UserCard } from '../types';
+import type { CatalogCard, PokemonProfile, PriceQuote, UserCard, CustomCollection } from '../types';
 
 const LOCAL_COLLECTION_EVENT = 'pokedex:collection-change';
 
@@ -307,4 +307,125 @@ export async function resetUserCollection(uid: string) {
   }
 
   writeLocalCards(uid, []);
+}
+
+function storageKeyCustomCollections(uid: string) {
+  return `pokedex:user-custom-collections:${uid}`;
+}
+
+export async function listCustomCollections(uid: string): Promise<CustomCollection[]> {
+  if (db) {
+    const snapshot = await getDocs(collection(db, 'users', uid, 'customCollections'));
+    return snapshot.docs.map((docItem) => ({
+      id: docItem.id,
+      ...(docItem.data() as Omit<CustomCollection, 'id'>),
+    }));
+  }
+
+  const raw = window.localStorage.getItem(storageKeyCustomCollections(uid));
+  if (!raw) return [];
+  return JSON.parse(raw) as CustomCollection[];
+}
+
+export function subscribeToCustomCollections(
+  uid: string,
+  onCollections: (collections: CustomCollection[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (db) {
+    const q = query(collection(db, 'users', uid, 'customCollections'), orderBy('createdAt', 'desc'));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        onCollections(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomCollection, 'id'>) })));
+      },
+      (error) => onError?.(error),
+    );
+  }
+
+  const emit = () => {
+    const raw = window.localStorage.getItem(storageKeyCustomCollections(uid));
+    onCollections(raw ? (JSON.parse(raw) as CustomCollection[]) : []);
+  };
+
+  const localListener = (event: Event) => {
+    const customEvent = event as CustomEvent<string>;
+    if (customEvent.detail === uid) emit();
+  };
+
+  const storageListener = (event: StorageEvent) => {
+    if (event.key === storageKeyCustomCollections(uid)) emit();
+  };
+
+  emit();
+  window.addEventListener(LOCAL_COLLECTION_EVENT, localListener);
+  window.addEventListener('storage', storageListener);
+
+  return () => {
+    window.removeEventListener(LOCAL_COLLECTION_EVENT, localListener);
+    window.removeEventListener('storage', storageListener);
+  };
+}
+
+export async function createCustomCollection(
+  uid: string,
+  collection: { id?: string; name: string; cardIds: string[]; sourceCollectionId?: string | null },
+) {
+  const now = new Date().toISOString();
+
+  if (db) {
+    const id = collection.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const ref = doc(db, 'users', uid, 'customCollections', id);
+    await setDoc(ref, {
+      name: collection.name,
+      cardIds: collection.cardIds,
+      sourceCollectionId: collection.sourceCollectionId ?? null,
+      createdAt: serverTimestamp(),
+    });
+    return { id, name: collection.name, cardIds: collection.cardIds, createdAt: now, sourceCollectionId: collection.sourceCollectionId ?? null } as CustomCollection;
+  }
+
+  const existing = listCustomCollections(uid);
+  const id = collection.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const next: CustomCollection = {
+    id,
+    name: collection.name,
+    cardIds: Array.from(new Set(collection.cardIds)),
+    createdAt: now,
+    sourceCollectionId: collection.sourceCollectionId ?? null,
+  };
+
+  const all = await Promise.resolve(existing);
+  const merged = [next, ...all.filter((c) => c.id !== id)];
+  window.localStorage.setItem(storageKeyCustomCollections(uid), JSON.stringify(merged));
+  window.dispatchEvent(new CustomEvent(LOCAL_COLLECTION_EVENT, { detail: uid }));
+  return next;
+}
+
+export async function updateCustomCollection(
+  uid: string,
+  collectionId: string,
+  patch: Partial<Omit<CustomCollection, 'id' | 'createdAt'>>,
+) {
+  if (db) {
+    await setDoc(doc(db, 'users', uid, 'customCollections', collectionId), patch, { merge: true });
+    return;
+  }
+
+  const all = await listCustomCollections(uid);
+  const next = all.map((c) => (c.id === collectionId ? { ...c, ...patch } : c));
+  window.localStorage.setItem(storageKeyCustomCollections(uid), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(LOCAL_COLLECTION_EVENT, { detail: uid }));
+}
+
+export async function deleteCustomCollection(uid: string, collectionId: string) {
+  if (db) {
+    await deleteDoc(doc(db, 'users', uid, 'customCollections', collectionId));
+    return;
+  }
+
+  const all = await listCustomCollections(uid);
+  const next = all.filter((c) => c.id !== collectionId);
+  window.localStorage.setItem(storageKeyCustomCollections(uid), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(LOCAL_COLLECTION_EVENT, { detail: uid }));
 }

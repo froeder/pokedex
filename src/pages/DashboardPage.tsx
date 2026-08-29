@@ -1015,7 +1015,7 @@ export function DashboardPage() {
         </div>
         <div>
           <span>Precificação</span>
-          <strong>Liga Pokémon</strong>
+          <strong>Liga + fallback</strong>
         </div>
       </section>
 

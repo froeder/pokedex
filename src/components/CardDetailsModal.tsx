@@ -42,6 +42,10 @@ function getQuoteSourceLabel(source: PriceQuote['source']) {
     return 'TCGdex convertido para BRL';
   }
 
+  if (source === 'PokemonTCG') {
+    return 'Pokémon TCG convertido para BRL';
+  }
+
   if (source === 'Unavailable') {
     return 'Liga Pokémon indisponível';
   }
@@ -50,8 +54,8 @@ function getQuoteSourceLabel(source: PriceQuote['source']) {
 }
 
 function getQuoteExternalLabel(source: PriceQuote['source']) {
-  if (source === 'TCGdex') {
-    return 'Abrir na TCGdex';
+  if (source === 'TCGdex' || source === 'PokemonTCG') {
+    return source === 'TCGdex' ? 'Abrir na TCGdex' : 'Abrir cotação';
   }
 
   return 'Abrir na Liga Pokémon';

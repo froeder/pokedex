@@ -8,7 +8,10 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 5 });
 
 const CACHE_TTL_MS = 44 * 60 * 60 * 1000;
 const UNAVAILABLE_CACHE_TTL_MS = 15 * 60 * 1000;
-const PRICE_CACHE_VERSION = 5;
+const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
+const PRICE_CACHE_VERSION = 7;
+
+let exchangeRateCache;
 
 function ensureString(value, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback;
@@ -81,6 +84,416 @@ function buildLigaUrl(card) {
   return url.toString();
 }
 
+function normalizeCardNumber(value) {
+  const number = ensureString(value);
+  return number || undefined;
+}
+
+function buildTcgdexCardId(card) {
+  const explicitId = ensureString(card?.id);
+  if (explicitId) {
+    return explicitId;
+  }
+
+  const setId = ensureString(card?.tcgdexSetId) || ensureString(card?.collectionId);
+  const number = normalizeCardNumber(card?.number);
+
+  return setId && number ? `${setId}-${number}` : undefined;
+}
+
+function buildTcgdexApiUrl(card) {
+  const cardId = buildTcgdexCardId(card);
+
+  return cardId ? `https://api.tcgdex.net/v2/pt/cards/${cardId}` : undefined;
+}
+
+function getPokemonTcgSetId(card) {
+  const setId = ensureString(card?.tcgdexSetId) || ensureString(card?.collectionId);
+
+  if (!setId) {
+    return undefined;
+  }
+
+  return setId.replace(/^sv0(?=\d)/, 'sv').replace('03.5', '3pt5');
+}
+
+function buildPokemonTcgApiUrl(card) {
+  const setId = getPokemonTcgSetId(card);
+  const number = normalizeCardNumber(card?.number);
+
+  if (!setId || !number) {
+    return undefined;
+  }
+
+  const query = `set.id:${setId} number:${number.replace(/^0+(?=\d)/, '')}`;
+
+  return `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(query)}`;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    },
+  });
+
+  if (!response.ok) {
+    throw new HttpsError(
+      response.status === 404 ? 'not-found' : 'unavailable',
+      `TCGdex retornou HTTP ${response.status}.`,
+      { url },
+    );
+  }
+
+  return response.json();
+}
+
+async function fetchPokemonTcgJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    },
+  });
+
+  if (!response.ok) {
+    throw new HttpsError(
+      response.status === 404 ? 'not-found' : 'unavailable',
+      `Pokémon TCG retornou HTTP ${response.status}.`,
+      { url },
+    );
+  }
+
+  return response.json();
+}
+
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function convertToBrl(value, rate) {
+  const number = toNumber(value);
+  if (typeof number !== 'number' || typeof rate !== 'number') {
+    return undefined;
+  }
+
+  return Number((number * rate).toFixed(2));
+}
+
+async function fetchExchangeRates() {
+  const now = Date.now();
+  if (exchangeRateCache && exchangeRateCache.expiresAt > now) {
+    return exchangeRateCache.rates;
+  }
+
+  const rateLoaders = [
+    async () => {
+      const response = await fetch(
+        'https://api.frankfurter.app/latest?from=EUR&to=BRL,USD',
+      );
+      if (!response.ok) {
+        throw new Error(`Frankfurter HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const eurBrl = toNumber(data?.rates?.BRL);
+      const eurUsd = toNumber(data?.rates?.USD);
+
+      return {
+        EUR: eurBrl,
+        USD: eurBrl && eurUsd ? eurBrl / eurUsd : undefined,
+      };
+    },
+    async () => {
+      const [eurResponse, usdResponse] = await Promise.all([
+        fetch('https://open.er-api.com/v6/latest/EUR'),
+        fetch('https://open.er-api.com/v6/latest/USD'),
+      ]);
+      if (!eurResponse.ok || !usdResponse.ok) {
+        throw new Error(
+          `ER API HTTP ${eurResponse.status}/${usdResponse.status}`,
+        );
+      }
+
+      const [eurData, usdData] = await Promise.all([
+        eurResponse.json(),
+        usdResponse.json(),
+      ]);
+
+      return {
+        EUR: toNumber(eurData?.rates?.BRL),
+        USD: toNumber(usdData?.rates?.BRL),
+      };
+    },
+    async () => {
+      const response = await fetch(
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json',
+      );
+      if (!response.ok) {
+        throw new Error(`currency-api HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const eurBrl = toNumber(data?.eur?.brl);
+      const eurUsd = toNumber(data?.eur?.usd);
+
+      return {
+        EUR: eurBrl,
+        USD: eurBrl && eurUsd ? eurBrl / eurUsd : undefined,
+      };
+    },
+  ];
+
+  let rates;
+  let lastError;
+
+  for (const loadRates of rateLoaders) {
+    try {
+      rates = await loadRates();
+      if (rates?.EUR && rates?.USD) {
+        break;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!rates?.EUR || !rates?.USD) {
+    throw new HttpsError(
+      'unavailable',
+      lastError instanceof Error
+        ? lastError.message
+        : 'Cotação de câmbio indisponível para converter preços.',
+    );
+  }
+
+  exchangeRateCache = {
+    rates,
+    expiresAt: now + EXCHANGE_RATE_TTL_MS,
+  };
+
+  return rates;
+}
+
+function createConvertedVariant(label, unit, rate, prices) {
+  if (!rate) {
+    return undefined;
+  }
+
+  const variant = {
+    label,
+    minimum: convertToBrl(prices.minimum, rate),
+    average: convertToBrl(prices.average, rate),
+    maximum: convertToBrl(prices.maximum, rate),
+  };
+
+  const hasPrice =
+    typeof variant.minimum === 'number' ||
+    typeof variant.average === 'number' ||
+    typeof variant.maximum === 'number';
+
+  if (!hasPrice) {
+    return undefined;
+  }
+
+  return {
+    ...variant,
+    label: `${label} (${unit} convertido)`,
+  };
+}
+
+function extractTcgdexPriceVariants(pricing, rates) {
+  const variants = [];
+  const cardmarket = pricing?.cardmarket;
+  const tcgplayer = pricing?.tcgplayer;
+
+  if (cardmarket) {
+    const rate = rates[cardmarket.unit];
+    const normal = createConvertedVariant('Cardmarket normal', cardmarket.unit, rate, {
+      minimum: cardmarket.low,
+      average: cardmarket.avg ?? cardmarket.trend,
+    });
+    const holo = createConvertedVariant('Cardmarket holo', cardmarket.unit, rate, {
+      minimum: cardmarket['low-holo'],
+      average: cardmarket['avg-holo'] ?? cardmarket['trend-holo'],
+    });
+
+    if (normal) {
+      variants.push(normal);
+    }
+
+    if (holo) {
+      variants.push(holo);
+    }
+  }
+
+  if (tcgplayer) {
+    const rate = rates[tcgplayer.unit];
+    for (const [variantName, priceData] of Object.entries(tcgplayer)) {
+      if (!priceData || typeof priceData !== 'object' || variantName === 'unit') {
+        continue;
+      }
+
+      const variant = createConvertedVariant(
+        `TCGplayer ${variantName.replaceAll('-', ' ')}`,
+        tcgplayer.unit,
+        rate,
+        {
+          minimum: priceData.lowPrice,
+          average: priceData.marketPrice ?? priceData.midPrice,
+          maximum: priceData.highPrice,
+        },
+      );
+
+      if (variant) {
+        variants.push(variant);
+      }
+    }
+  }
+
+  return variants;
+}
+
+function extractPokemonTcgPriceVariants(card, rates) {
+  const variants = [];
+  const cardmarket = card?.cardmarket?.prices;
+  const tcgplayer = card?.tcgplayer?.prices;
+
+  if (cardmarket) {
+    const normal = createConvertedVariant('Cardmarket', 'EUR', rates.EUR, {
+      minimum: cardmarket.lowPrice,
+      average:
+        cardmarket.trendPrice ??
+        cardmarket.averageSellPrice ??
+        cardmarket.avg30,
+    });
+    const reverse = createConvertedVariant('Cardmarket reverso', 'EUR', rates.EUR, {
+      minimum: cardmarket.reverseHoloLow,
+      average:
+        cardmarket.reverseHoloTrend ??
+        cardmarket.reverseHoloSell ??
+        cardmarket.reverseHoloAvg30,
+    });
+
+    if (normal) {
+      variants.push(normal);
+    }
+
+    if (reverse) {
+      variants.push(reverse);
+    }
+  }
+
+  if (tcgplayer) {
+    for (const [variantName, priceData] of Object.entries(tcgplayer)) {
+      if (!priceData || typeof priceData !== 'object') {
+        continue;
+      }
+
+      const variant = createConvertedVariant(
+        `TCGplayer ${variantName.replaceAll('-', ' ')}`,
+        'USD',
+        rates.USD,
+        {
+          minimum: priceData.low ?? priceData.directLow,
+          average: priceData.market ?? priceData.mid,
+          maximum: priceData.high,
+        },
+      );
+
+      if (variant) {
+        variants.push(variant);
+      }
+    }
+  }
+
+  return variants;
+}
+
+async function fetchTcgdexQuote(card, now) {
+  const apiUrl = buildTcgdexApiUrl(card);
+  if (!apiUrl) {
+    throw new HttpsError('invalid-argument', 'ID TCGdex da carta ausente.');
+  }
+
+  const [tcgdexCard, rates] = await Promise.all([
+    fetchJson(apiUrl),
+    fetchExchangeRates(),
+  ]);
+  const variants = extractTcgdexPriceVariants(tcgdexCard?.pricing, rates);
+
+  if (!variants.length) {
+    throw new HttpsError(
+      'not-found',
+      'A TCGdex não retornou cotação para esta carta.',
+      { url: apiUrl },
+    );
+  }
+
+  const primaryPrice = pickPrimaryPrice(variants);
+
+  return {
+    cardId: ensureString(card?.id),
+    cardName: ensureString(card?.name),
+    collectionId: ensureString(card?.collectionId),
+    currency: 'BRL',
+    source: 'TCGdex',
+    url: apiUrl,
+    cacheVersion: PRICE_CACHE_VERSION,
+    unavailableReason:
+      'Preço alternativo de Cardmarket/TCGplayer convertido para BRL.',
+    fetchedAt: admin.firestore.Timestamp.fromMillis(now),
+    expiresAt: admin.firestore.Timestamp.fromMillis(now + CACHE_TTL_MS),
+    variants,
+    ...primaryPrice,
+  };
+}
+
+async function fetchPokemonTcgQuote(card, now) {
+  const apiUrl = buildPokemonTcgApiUrl(card);
+  if (!apiUrl) {
+    throw new HttpsError('invalid-argument', 'Dados da carta ausentes para Pokémon TCG.');
+  }
+
+  const [pokemonTcgData, rates] = await Promise.all([
+    fetchPokemonTcgJson(apiUrl),
+    fetchExchangeRates(),
+  ]);
+  const pokemonTcgCard = pokemonTcgData?.data?.[0];
+  const variants = extractPokemonTcgPriceVariants(pokemonTcgCard, rates);
+
+  if (!variants.length) {
+    throw new HttpsError(
+      'not-found',
+      'A Pokémon TCG não retornou cotação para esta carta.',
+      { url: apiUrl },
+    );
+  }
+
+  const primaryPrice = pickPrimaryPrice(variants);
+
+  return {
+    cardId: ensureString(card?.id),
+    cardName: ensureString(pokemonTcgCard?.name) || ensureString(card?.name),
+    collectionId: ensureString(card?.collectionId),
+    currency: 'BRL',
+    source: 'PokemonTCG',
+    url: pokemonTcgCard?.cardmarket?.url || pokemonTcgCard?.tcgplayer?.url || apiUrl,
+    cacheVersion: PRICE_CACHE_VERSION,
+    unavailableReason:
+      'Preço alternativo de Cardmarket/TCGplayer convertido para BRL.',
+    fetchedAt: admin.firestore.Timestamp.fromMillis(now),
+    expiresAt: admin.firestore.Timestamp.fromMillis(now + CACHE_TTL_MS),
+    variants,
+    ...primaryPrice,
+  };
+}
+
 async function fetchLigaPage(url) {
   const response = await fetch(url, {
     headers: {
@@ -149,7 +562,10 @@ function isRecoverableLigaError(error) {
 
 function isReusableCachedQuote(quote, now) {
   const reusableSource =
-    quote?.source === 'LigaPokemon' || quote?.source === 'Unavailable';
+    quote?.source === 'LigaPokemon' ||
+    quote?.source === 'TCGdex' ||
+    quote?.source === 'PokemonTCG' ||
+    quote?.source === 'Unavailable';
   const expiresAt = quote?.expiresAt?.toMillis?.() ?? 0;
 
   return (
@@ -258,14 +674,26 @@ exports.getCardMarketPrice = onCall(
         throw priceError;
       }
 
-      quote = createUnavailableQuote(
-        card,
-        url,
-        now,
-        priceError instanceof Error
-          ? priceError.message
-          : 'Cotação indisponível na Liga Pokémon.',
-      );
+      try {
+        quote = await fetchTcgdexQuote(card, now);
+      } catch (tcgdexError) {
+        try {
+          quote = await fetchPokemonTcgQuote(card, now);
+        } catch (fallbackError) {
+        quote = createUnavailableQuote(
+          card,
+          url,
+          now,
+          fallbackError instanceof Error
+            ? fallbackError.message
+              : tcgdexError instanceof Error
+                ? tcgdexError.message
+                : priceError instanceof Error
+                  ? priceError.message
+                  : 'Cotação indisponível na Liga Pokémon.',
+        );
+        }
+      }
     }
 
     await cacheRef.set(removeUndefinedFields(quote), { merge: true });

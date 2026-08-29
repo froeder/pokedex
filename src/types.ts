@@ -63,7 +63,7 @@ export interface PriceQuote {
   cardName: string;
   collectionId: string;
   currency: 'BRL';
-  source: 'LigaPokemon' | 'TCGdex' | 'Demo' | 'Unavailable';
+  source: 'LigaPokemon' | 'TCGdex' | 'PokemonTCG' | 'Demo' | 'Unavailable';
   url?: string;
   price?: number;
   priceType?: 'average' | 'minimum';
@@ -102,4 +102,12 @@ export interface PokemonProfile {
   types: string[];
   stats: PokemonStat[];
   evolutionChain: string[];
+}
+
+export interface CustomCollection {
+  id: string;
+  name: string;
+  cardIds: string[];
+  createdAt: string;
+  sourceCollectionId?: string | null;
 }

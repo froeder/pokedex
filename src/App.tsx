@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell';
 import { useAuth } from './hooks/useAuth';
 import { AddCardPage } from './pages/AddCardPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { CustomCollectionsPage } from './pages/CustomCollectionsPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -39,6 +40,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/adicionar" element={<AddCardPage />} />
+          <Route path="/colecoes" element={<CustomCollectionsPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
         </Route>
       </Route>

@@ -66,6 +66,10 @@ export function AppShell() {
             <Grid2X2 size={18} aria-hidden="true" />
             Minha Pokédex
           </NavLink>
+          <NavLink to="/colecoes">
+            <LibraryBig size={18} aria-hidden="true" />
+            Coleções
+          </NavLink>
           <NavLink to="/adicionar">
             <Plus size={18} aria-hidden="true" />
             Adicionar
