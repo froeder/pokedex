@@ -4,6 +4,7 @@ import {
   Info,
   LoaderCircle,
   Plus,
+  Hash,
   Search,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -55,6 +56,32 @@ function getCardText(card: CatalogCard) {
   );
 }
 
+function normalizeCardNumber(value: string) {
+  const normalized = value.trim().replace(/^#/, '').toLowerCase();
+
+  return /^\d+$/.test(normalized)
+    ? String(Number.parseInt(normalized, 10))
+    : normalized;
+}
+
+function parseCardNumberEntries(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function findCardByNumber(cards: CatalogCard[], numberEntry: string) {
+  const normalizedEntry = normalizeCardNumber(numberEntry);
+
+  return cards.find(
+    (card) =>
+      card.number.trim().toLowerCase() ===
+        numberEntry.trim().replace(/^#/, '').toLowerCase() ||
+      normalizeCardNumber(card.number) === normalizedEntry,
+  );
+}
+
 export function AddCardPage() {
   const { user } = useAuth();
   const [collections, setCollections] = useState<TcgCollection[]>([]);
@@ -63,6 +90,7 @@ export function AddCardPage() {
     useState<TcgCollection | null>(null);
   const [collectionQuery, setCollectionQuery] = useState('');
   const [cardQuery, setCardQuery] = useState('');
+  const [numberEntries, setNumberEntries] = useState('');
   const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
   const [ownedQuantities, setOwnedQuantities] = useState<Record<string, number>>(
     {},
@@ -71,6 +99,7 @@ export function AddCardPage() {
     {},
   );
   const [addingId, setAddingId] = useState<string>();
+  const [addingByNumber, setAddingByNumber] = useState(false);
   const [loadingCollections, setLoadingCollections] = useState(true);
   const [loadingCards, setLoadingCards] = useState(false);
   const [error, setError] = useState('');
@@ -259,6 +288,76 @@ export function AddCardPage() {
     }
   }
 
+  async function handleAddCardsByNumber() {
+    if (!user || addingByNumber || !activeCollection) {
+      return;
+    }
+
+    const entries = parseCardNumberEntries(numberEntries);
+
+    if (entries.length === 0) {
+      return;
+    }
+
+    const cardsToAdd: CatalogCard[] = [];
+    const missingEntries: string[] = [];
+
+    entries.forEach((entry) => {
+      const card = findCardByNumber(activeCollection.cards, entry);
+
+      if (card) {
+        cardsToAdd.push(card);
+      } else {
+        missingEntries.push(entry);
+      }
+    });
+
+    if (cardsToAdd.length === 0) {
+      setError(
+        `Nenhuma carta encontrada para: ${missingEntries.join(', ')}.`,
+      );
+      return;
+    }
+
+    setAddingByNumber(true);
+    setError('');
+
+    let addedCount = 0;
+
+    try {
+      for (const card of cardsToAdd) {
+        const hydratedCard = await hydrateCatalogCard(card);
+        await addUserCard(user.uid, hydratedCard, 1);
+        addedCount += 1;
+
+        setOwnedQuantities((currentQuantities) => ({
+          ...currentQuantities,
+          [card.id]: (currentQuantities[card.id] ?? 0) + 1,
+        }));
+      }
+
+      setToast({
+        id: Date.now(),
+        message:
+          addedCount === 1
+            ? `${cardsToAdd[0].name} adicionada à coleção.`
+            : `${addedCount} cartas adicionadas à coleção.`,
+      });
+
+      if (missingEntries.length > 0) {
+        setError(
+          `Alguns números não foram encontrados nesta coleção: ${missingEntries.join(', ')}.`,
+        );
+      }
+
+      setNumberEntries('');
+    } catch (addError) {
+      setError(getFriendlyFirebaseError(addError));
+    } finally {
+      setAddingByNumber(false);
+    }
+  }
+
   function handleSelectCollection(collectionId: string) {
     if (collectionId === selectedCollectionId) {
       return;
@@ -266,6 +365,7 @@ export function AddCardPage() {
 
     setActiveCollection(null);
     setCardQuery('');
+    setNumberEntries('');
     setError('');
     setLoadingCards(true);
     setSelectedCollectionId(collectionId);
@@ -380,6 +480,44 @@ export function AddCardPage() {
               <span>{filteredCards.length} exibidas</span>
             </div>
           ) : null}
+
+          <form
+            className="number-add-panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddCardsByNumber();
+            }}
+          >
+            <label className="search-field number-add-field">
+              <Hash size={18} aria-hidden="true" />
+              <input
+                aria-label="Adicionar por número da carta"
+                disabled={!activeCollection || loadingCards || addingByNumber}
+                inputMode="text"
+                placeholder="Adicionar por número: 12, 25, 101"
+                type="text"
+                value={numberEntries}
+                onChange={(event) => setNumberEntries(event.target.value)}
+              />
+            </label>
+            <button
+              className="secondary-action"
+              disabled={
+                !activeCollection ||
+                loadingCards ||
+                addingByNumber ||
+                parseCardNumberEntries(numberEntries).length === 0
+              }
+              type="submit"
+            >
+              {addingByNumber ? (
+                <LoaderCircle className="spin" size={18} aria-hidden="true" />
+              ) : (
+                <Plus size={18} aria-hidden="true" />
+              )}
+              {addingByNumber ? 'Adicionando...' : 'Adicionar números'}
+            </button>
+          </form>
 
           {loadingCards ? (
             <div className="panel-loader">Carregando cartas...</div>

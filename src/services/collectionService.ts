@@ -3,11 +3,13 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -286,4 +288,23 @@ export async function removeUserCard(uid: string, cardId: string) {
     uid,
     readLocalCards(uid).filter((card) => card.id !== cardId),
   );
+}
+
+export async function resetUserCollection(uid: string) {
+  if (db) {
+    const cardsSnapshot = await getDocs(collection(db, 'users', uid, 'cards'));
+    const cardDocs = cardsSnapshot.docs;
+
+    for (let index = 0; index < cardDocs.length; index += 500) {
+      const batch = writeBatch(db);
+      const chunk = cardDocs.slice(index, index + 500);
+
+      chunk.forEach((cardDoc) => batch.delete(cardDoc.ref));
+      await batch.commit();
+    }
+
+    return;
+  }
+
+  writeLocalCards(uid, []);
 }

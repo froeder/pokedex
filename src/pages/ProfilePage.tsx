@@ -1,12 +1,27 @@
-import { LibraryBig, LogOut, Mail, Sparkles, UserCircle } from 'lucide-react';
+import {
+  LibraryBig,
+  LoaderCircle,
+  LogOut,
+  Mail,
+  RotateCcw,
+  Sparkles,
+  UserCircle,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { subscribeToUserCards } from '../services/collectionService';
+import {
+  resetUserCollection,
+  subscribeToUserCards,
+} from '../services/collectionService';
 import type { UserCard } from '../types';
+import { getFriendlyFirebaseError } from '../utils/firebaseErrors';
 
 export function ProfilePage() {
   const { logout, user } = useAuth();
   const [cards, setCards] = useState<UserCard[]>([]);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -25,6 +40,33 @@ export function ProfilePage() {
     () => cards.reduce((total, card) => total + (card.quantity ?? 1), 0),
     [cards],
   );
+
+  async function handleResetCollection() {
+    if (!user || resetting || cardCount === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Isso vai apagar todas as cartas salvas e zerar suas coleções. Deseja continuar?',
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setResetting(true);
+    setResetError('');
+    setResetMessage('');
+
+    try {
+      await resetUserCollection(user.uid);
+      setResetMessage('Coleções resetadas. Você pode começar do começo.');
+    } catch (error) {
+      setResetError(getFriendlyFirebaseError(error));
+    } finally {
+      setResetting(false);
+    }
+  }
 
   return (
     <div className="page-stack">
@@ -61,7 +103,25 @@ export function ProfilePage() {
           </div>
         </div>
 
+        {resetError ? <div className="form-error">{resetError}</div> : null}
+        {resetMessage ? (
+          <div className="success-message">{resetMessage}</div>
+        ) : null}
+
         <div className="profile-actions">
+          <button
+            className="secondary-action subtle-danger"
+            type="button"
+            disabled={resetting || cardCount === 0}
+            onClick={() => void handleResetCollection()}
+          >
+            {resetting ? (
+              <LoaderCircle className="spin" size={18} aria-hidden="true" />
+            ) : (
+              <RotateCcw size={18} aria-hidden="true" />
+            )}
+            {resetting ? 'Resetando...' : 'Resetar app'}
+          </button>
           <button
             className="secondary-action subtle-danger"
             type="button"
